@@ -67,7 +67,7 @@ function displayHeartRateChart(labels, data) {
                 borderColor: 'rgba(255, 99, 132, 1)',
                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
                 pointRadius: 1,
-                fill: true,
+                fill: false,
                 tension: 0.1,  // Slight curve in the line
             }],
         },
@@ -78,6 +78,7 @@ function displayHeartRateChart(labels, data) {
                     pan: {
                         enabled: true,
                         mode: 'x',  // Pan only along the x-axis (time)
+                        threshold: 10,  // Minimum drag distance to trigger panning
                     },
                     zoom: {
                         wheel: {

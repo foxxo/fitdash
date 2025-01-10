@@ -73,12 +73,19 @@ function displayHeartRateChart(labels, data) {
         },
         options: {
             responsive: true,
+            interaction: {
+                mode: 'nearest',  // Ensure interaction is triggered near the mouse cursor
+                intersect: false,
+            },
             plugins: {
                 zoom: {
                     pan: {
                         enabled: true,
                         mode: 'x',  // Pan only along the x-axis (time)
-                        threshold: 10,  // Minimum drag distance to trigger panning
+                        threshold: 0,  // Minimum drag distance to trigger panning
+                        onPan: function({chart}) {
+                            console.log('Panning:', chart);
+                        },
                     },
                     zoom: {
                         wheel: {

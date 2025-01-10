@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FitDash</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
 </head>
@@ -21,37 +21,5 @@
 </div>
 
 <script src="script.js"></script>
-
-<canvas id="testChart"></canvas>
-<script>
-    const ctx = document.getElementById('testChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['9:00', '10:00', '11:00'],
-            datasets: [{
-                label: 'Test',
-                data: [65, 59, 80],
-                borderColor: 'rgba(255, 99, 132, 1)',
-            }]
-        },
-        options: {
-            plugins: {
-                zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'x',
-                    },
-                    zoom: {
-                        wheel: {
-                            enabled: true,
-                        },
-                        mode: 'x',
-                    }
-                }
-            }
-        }
-    });
-</script>
 </body>
 </html>

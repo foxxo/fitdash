@@ -16,114 +16,105 @@ async function fetchHeartRateData() {
 
     if (!accessToken) {
         alert('Please log in through Fitbit to continue.');
-        return;
     }
-}
 
-    async function fetchFitbitData() {
-        const accessToken = localStorage.getItem('fitbit_access_token');
-        if (!accessToken) {
-            alert('Please log in through Fitbit to continue.');
+    try {
+        const response = await fetch(fitbitUrl, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            console.error(`Error: ${response.statusText} (status ${response.status})`);
+            throw new Error('Failed to fetch Fitbit heart rate data');
+        }
+
+        const data = await response.json();
+        const heartRateData = data["activities-heart-intraday"].dataset;
+
+        if (!heartRateData || heartRateData.length === 0) {
+            alert("No heart rate data available for today.");
             return;
         }
 
-        try {
-            const response = await fetch(fitbitUrl, {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                },
-            });
+        const timeLabels = heartRateData.map(entry => entry.time);
+        const heartRateValues = heartRateData.map(entry => entry.value);
 
-            if (!response.ok) {
-                console.error(`Error: ${response.statusText} (status ${response.status})`);
-                throw new Error('Failed to fetch Fitbit heart rate data');
-            }
-
-            const data = await response.json();
-            const heartRateData = data["activities-heart-intraday"].dataset;
-
-            if (!heartRateData || heartRateData.length === 0) {
-                alert("No heart rate data available for today.");
-                return;
-            }
-
-            const timeLabels = heartRateData.map(entry => entry.time);
-            const heartRateValues = heartRateData.map(entry => entry.value);
-
-            displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
-        } catch (error) {
-            console.error('Fetch error:', error);
-            alert('Error fetching Fitbit data. Try logging in again.');
-        }
+        displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
+    } catch (error) {
+        console.error('Fetch error:', error);
+        alert('Error fetching Fitbit data. Try logging in again.');
     }
+}
 
-    function displayHeartRateChart(labels, data) {
-        const ctx = document.getElementById('heartrateChart').getContext('2d');
+function displayHeartRateChart(labels, data) {
+    const ctx = document.getElementById('heartrateChart').getContext('2d');
 
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Heart Rate (BPM)',
-                    data: data,
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    pointRadius: 1,
-                    fill: true,
-                    tension: 0.1,  // Slight curve in the line
-                }],
-            },
-            options: {
-                responsive: true,
-                plugins: {
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Heart Rate (BPM)',
+                data: data,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                pointRadius: 1,
+                fill: true,
+                tension: 0.1,  // Slight curve in the line
+            }],
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                    },
                     zoom: {
-                        pan: {
-                            enabled: true,
-                            mode: 'x',
+                        wheel: {
+                            enabled: true,  // Enable zoom with mouse wheel
                         },
-                        zoom: {
-                            wheel: {
-                                enabled: true,  // Enable zoom with mouse wheel
-                            },
-                            pinch: {
-                                enabled: true,  // Enable pinch-to-zoom on touch devices
-                            },
-                            mode: 'x',  // Only zoom along the x-axis (time)
+                        pinch: {
+                            enabled: true,  // Enable pinch-to-zoom on touch devices
                         },
-                    },
-                    legend: {
-                        display: true,
+                        mode: 'x',  // Only zoom along the x-axis (time)
                     },
                 },
-                scales: {
-                    x: {
-                        type: 'time',  // Time-based x-axis
-                        time: {
-                            unit: 'minute',
-                            displayFormats: {
-                                minute: 'HH:mm',
-                            },
-                        },
-                        title: {
-                            display: true,
-                            text: 'Time of Day',
-                        },
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Heart Rate (BPM)',
-                        },
-                        suggestedMin: 40,  // Minimum y-axis value (for clarity)
-                        suggestedMax: 200, // Maximum y-axis value
-                    },
+                legend: {
+                    display: true,
                 },
             },
-        });
-    }
+            scales: {
+                x: {
+                    type: 'time',  // Time-based x-axis
+                    time: {
+                        unit: 'minute',
+                        displayFormats: {
+                            minute: 'HH:mm',
+                        },
+                    },
+                    title: {
+                        display: true,
+                        text: 'Time of Day',
+                    },
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Heart Rate (BPM)',
+                    },
+                    suggestedMin: 40,  // Minimum y-axis value (for clarity)
+                    suggestedMax: 200, // Maximum y-axis value
+                },
+            },
+        },
+    });
+}
 
-    document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);
+document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);
 
 // Store token after redirect
 window.onload = function () {

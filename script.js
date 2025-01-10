@@ -2,23 +2,6 @@ const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
 
-Chart.defaults.plugins.zoom = {
-    pan: {
-        enabled: true,
-        mode: 'x',
-    },
-    zoom: {
-        wheel: {
-            enabled: true,
-        },
-        pinch: {
-            enabled: true,
-        },
-        mode: 'x',
-    },
-};
-
-
 const today = new Date();
 const year = today.getFullYear();
 const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -73,6 +56,23 @@ function displayHeartRateChart(labels, data) {
         return today;  // Return a Date object
     });
     const ctx = document.getElementById('heartrateChart').getContext('2d');
+
+    Chart.defaults.plugins.zoom = {
+        pan: {
+            enabled: true,
+            mode: 'x',
+        },
+        zoom: {
+            wheel: {
+                enabled: true,
+            },
+            pinch: {
+                enabled: true,
+            },
+            mode: 'x',
+        },
+    };
+
 
     new Chart(ctx, {
         type: 'line',

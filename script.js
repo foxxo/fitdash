@@ -1,6 +1,8 @@
 const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
+
+const proxyUrl = "https://cors-anywhere.herokuapp.com/";
 const fitbitUrl = "https://api.fitbit.com/1/user/-/activities/date/today.json";
 
 document.getElementById('fetchData').addEventListener('click', () => {
@@ -19,7 +21,7 @@ async function fetchFitbitData() {
     }
 
     try {
-        const response = await fetch(`${fitbitUrl}`, {
+        const response = await fetch(`${proxyUrl}${fitbitUrl}`, {
             headers: {
                 Authorization: `Bearer ${accessToken}`,
             },

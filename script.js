@@ -82,10 +82,7 @@ function displayHeartRateChart(labels, data) {
                     pan: {
                         enabled: true,
                         mode: 'x',  // Pan only along the x-axis (time)
-                        threshold: 0,  // Minimum drag distance to trigger panning
-                        onPan: function({chart}) {
-                            console.log('Panning:', chart);
-                        },
+                        threshold: 5,  // Minimum drag distance to trigger panning
                     },
                     zoom: {
                         wheel: {

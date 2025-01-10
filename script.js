@@ -9,7 +9,7 @@ const day = String(today.getDate()).padStart(2, '0');
 const formattedDate = `${year}-${month}-${day}`;
 
 // Fitbit API URL with dynamic date instead of "today.json"
-const fitbitUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}.json`;
+const fitbitUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`;
 
 async function fetchHeartRateData() {
     const accessToken = localStorage.getItem('fitbit_access_token');

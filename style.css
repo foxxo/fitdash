@@ -30,3 +30,7 @@ button {
     margin-top: 20px;
     overflow-x: auto;
 }
+
+canvas {
+    pointer-events: auto;  /* Ensure mouse events are passed to the canvas */
+}

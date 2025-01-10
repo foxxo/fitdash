@@ -2,8 +2,14 @@ const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
 
-// const proxyUrl = "https://cors-anywhere.herokuapp.com/";
-const fitbitUrl = "https://api.fitbit.com/1/user/-/activities/date/today.json";
+const today = new Date();
+const year = today.getFullYear();
+const month = String(today.getMonth() + 1).padStart(2, '0');
+const day = String(today.getDate()).padStart(2, '0');
+const formattedDate = `${year}-${month}-${day}`;
+
+// Fitbit API URL with dynamic date instead of "today.json"
+const fitbitUrl = `https://api.fitbit.com/1/user/-/activities/date/${formattedDate}.json`;
 
 document.getElementById('fetchData').addEventListener('click', () => {
     if (!localStorage.getItem('fitbit_access_token')) {

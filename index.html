@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fitbit Dashboard</title>
+    <title>FitDash</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 </head>
+
 <body>
 <div class="container">
-    <h1>My Fitbit Dashboard</h1>
-    <button id="fetchData">Load Fitbit Data</button>
+    <h1>FitDash</h1>
+    <button id="fetchData">Load Data</button>
     <div id="dataDisplay">
-        <!-- Fitbit data will be displayed here -->
+        <canvas id="heartrateChart"></canvas>
     </div>
 </div>
 

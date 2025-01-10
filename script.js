@@ -126,6 +126,9 @@ function displayHeartRateChart(labels, data) {
             },
         },
     });
+
+
+
 }
 
 document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);

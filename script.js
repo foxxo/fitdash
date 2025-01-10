@@ -49,12 +49,18 @@ async function fetchHeartRateData() {
 }
 
 function displayHeartRateChart(labels, data) {
+    const fullDateLabels = labels.map(time => {
+        const [hours, minutes] = time.split(':').map(Number);
+        const today = new Date();
+        today.setHours(hours, minutes, 0, 0);  // Set the time (hours and minutes)
+        return today;  // Return a Date object
+    });
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
+            labels: fullDateLabels,
             datasets: [{
                 label: 'Heart Rate (BPM)',
                 data: data,
@@ -71,16 +77,16 @@ function displayHeartRateChart(labels, data) {
                 zoom: {
                     pan: {
                         enabled: true,
-                        mode: 'x',
+                        mode: 'x',  // Pan only along the x-axis (time)
                     },
                     zoom: {
                         wheel: {
-                            enabled: true,  // Enable zoom with mouse wheel
+                            enabled: true,  // Enable zoom with the mouse wheel
                         },
                         pinch: {
-                            enabled: true,  // Enable pinch-to-zoom on touch devices
+                            enabled: true,  // Enable pinch-to-zoom on touchscreens
                         },
-                        mode: 'x',  // Only zoom along the x-axis (time)
+                        mode: 'x',
                     },
                 },
                 legend: {
@@ -89,7 +95,7 @@ function displayHeartRateChart(labels, data) {
             },
             scales: {
                 x: {
-                    type: 'time',  // Time-based x-axis
+                    type: 'time',  // Ensure the x-axis uses time-based data
                     time: {
                         unit: 'minute',
                         displayFormats: {
@@ -106,8 +112,8 @@ function displayHeartRateChart(labels, data) {
                         display: true,
                         text: 'Heart Rate (BPM)',
                     },
-                    suggestedMin: 40,  // Minimum y-axis value (for clarity)
-                    suggestedMax: 200, // Maximum y-axis value
+                    suggestedMin: 40,  // Lower limit for y-axis
+                    suggestedMax: 200,  // Upper limit for y-axis
                 },
             },
         },

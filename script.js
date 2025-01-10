@@ -57,23 +57,6 @@ function displayHeartRateChart(labels, data) {
     });
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
-    Chart.defaults.plugins.zoom = {
-        pan: {
-            enabled: true,
-            mode: 'x',
-        },
-        zoom: {
-            wheel: {
-                enabled: true,
-            },
-            pinch: {
-                enabled: true,
-            },
-            mode: 'x',
-        },
-    };
-
-
     new Chart(ctx, {
         type: 'line',
         data: {

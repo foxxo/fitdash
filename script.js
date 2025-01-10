@@ -132,6 +132,9 @@ function displayHeartRateChart(labels, data) {
 }
 
 document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);
+document.getElementById('heartrateChart').addEventListener('mousedown', (event) => {
+    event.preventDefault();  // Prevent browser from selecting or dragging the chart element
+});
 
 // Store token after redirect
 window.onload = function () {

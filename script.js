@@ -4,13 +4,19 @@ const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&cl
 
 let currentStartDate = new Date();  // Start with today
 currentStartDate.setHours(0, 0, 0, 0);  // Set to midnight for consistency
-
 const fitbitApiBaseUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/`;
+const loadedDates = new Set();  // Track dates that have already been fetched
 
 // Fetch heart rate data for a given date
 async function fetchHeartRateDataForDate(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = date.toISOString().split('T')[0];  // Format as YYYY-MM-DD
+
+    // Skip if this date has already been fetched
+    if (loadedDates.has(formattedDate)) {
+        console.log(`Data for ${formattedDate} already loaded.`);
+        return [];
+    }
 
     const response = await fetch(`${fitbitApiBaseUrl}${formattedDate}/1d/1min.json`, {
         headers: {
@@ -24,7 +30,13 @@ async function fetchHeartRateDataForDate(date) {
     }
 
     const data = await response.json();
-    return data["activities-heart-intraday"].dataset || [];
+    const dataset = data["activities-heart-intraday"].dataset || [];
+
+    if (dataset.length > 0) {
+        loadedDates.add(formattedDate);  // Mark this date as loaded
+    }
+
+    return dataset;
 }
 
 // Function to add new data to the chart
@@ -57,6 +69,8 @@ async function onPan({ chart }) {
         if (newData.length > 0) {
             addDataToChart(chart, newData, newDate);
             currentStartDate = newDate;  // Update start date to include the new data
+        } else {
+            console.log(`No data available for ${newDate.toISOString().split('T')[0]}.`);
         }
     }
 }

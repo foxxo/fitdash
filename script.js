@@ -14,29 +14,34 @@ async function fetchHeartRateDataForDate(date) {
 
     // Skip if this date has already been fetched
     if (loadedDates.has(formattedDate)) {
-        console.log(`Data for ${formattedDate} already loaded.`);
+        console.log(`Data for ${formattedDate} already being fetched or loaded.`);
         return [];
     }
 
-    const response = await fetch(`${fitbitApiBaseUrl}${formattedDate}/1d/1min.json`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
-    });
+    // Add date to prevent duplicate calls
+    loadedDates.add(formattedDate);
 
-    if (!response.ok) {
-        console.error(`Error fetching data for ${formattedDate}: ${response.statusText} (status ${response.status})`);
-        throw new Error('Failed to fetch Fitbit heart rate data');
+    try {
+        const response = await fetch(`${fitbitApiBaseUrl}${formattedDate}/1d/1min.json`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            console.error(`Error fetching data for ${formattedDate}: ${response.statusText} (status ${response.status})`);
+            throw new Error('Failed to fetch Fitbit heart rate data');
+        }
+
+        const data = await response.json();
+        return data["activities-heart-intraday"].dataset || [];
+
+    } catch (error) {
+        console.error(`Error fetching data for ${formattedDate}:`, error);
+        // Remove the date from the set so it can be retried if needed
+        loadedDates.delete(formattedDate);
+        return [];
     }
-
-    const data = await response.json();
-    const dataset = data["activities-heart-intraday"].dataset || [];
-
-    if (dataset.length > 0) {
-        loadedDates.add(formattedDate);  // Mark this date as loaded
-    }
-
-    return dataset;
 }
 
 // Function to add new data to the chart

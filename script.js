@@ -58,28 +58,6 @@ function addDataToChart(chart, newData, date) {
     chart.update();
 }
 
-// Handle panning: fetch previous day's data if necessary
-async function onPan({ chart }) {
-    const xScale = chart.scales.x;
-    const minDate = new Date(xScale.min);  // Visible minimum date
-
-    if (minDate < currentStartDate) {
-        console.log("Panned left: fetching previous day's data...");
-
-        // Fetch data for the previous day
-        const newDate = new Date(currentStartDate);
-        newDate.setDate(newDate.getDate() - 1);  // Go one day back
-
-        const newData = await fetchHeartRateDataForDate(newDate);
-        if (newData.length > 0) {
-            addDataToChart(chart, newData, newDate);
-            currentStartDate = newDate;  // Update start date to include the new data
-        } else {
-            console.log(`No data available for ${newDate.toISOString().split('T')[0]}.`);
-        }
-    }
-}
-
 function displayHeartRateChart(labels, data) {
     const fullDateLabels = labels.map(time => {
         const [hours, minutes] = time.split(':').map(Number);
@@ -145,22 +123,23 @@ function displayHeartRateChart(labels, data) {
                     ticks: {
                         callback: function (value, index, values) {
                             const date = new Date(value);
+                            const prevDate = index > 0 ? new Date(values[index - 1].value) : null;
 
-                            // Display the date at 12:00 AM or for the first value in the visible range
-                            if (date.getHours() === 0 && date.getMinutes() === 0) {
-                                return `${date.toLocaleDateString()} 12:00 AM`;  // Show full date at midnight
+                            // Show date if it's the first tick of the day
+                            if (prevDate && date.toDateString() !== prevDate.toDateString()) {
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
-                            // Show the date at the lowest visible value
+                            // Show the first visible date in the view (to ensure a date is always displayed)
                             if (index === 0) {
-                                return date.toLocaleDateString();
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
-                            // Default time format for all other labels
+                            // Default: just show the time
                             return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
                         },
                         autoSkip: true,
-                        maxTicksLimit: 10,  // Control number of labels shown
+                        maxTicksLimit: 10,
                     },
                     title: {
                         display: true,
@@ -178,6 +157,31 @@ function displayHeartRateChart(labels, data) {
             },
         },
     });
+}
+
+// Handle panning: fetch previous day's data if necessary and force an update
+async function onPan({ chart }) {
+    const xScale = chart.scales.x;
+    const minDate = new Date(xScale.min);  // Visible minimum date
+
+    if (minDate < currentStartDate) {
+        console.log("Panned left: fetching previous day's data...");
+
+        // Fetch data for the previous day
+        const newDate = new Date(currentStartDate);
+        newDate.setDate(newDate.getDate() - 1);  // Go one day back
+
+        const newData = await fetchHeartRateDataForDate(newDate);
+        if (newData.length > 0) {
+            addDataToChart(chart, newData, newDate);
+            currentStartDate = newDate;  // Update start date to include the new data
+        } else {
+            console.log(`No data available for ${newDate.toISOString().split('T')[0]}.`);
+        }
+
+        // Force chart update immediately after data is added
+        chart.update('none');
+    }
 }
 
 

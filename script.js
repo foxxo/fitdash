@@ -124,15 +124,13 @@ function displayHeartRateChart(labels, data) {
                         callback: function (value, index, values) {
                             const date = new Date(value);  // Convert tick value to date
                             const prevDate = index > 0 ? new Date(values[index - 1].value) : null;
-                            const nextTickDate = index < values.length - 1 ? new Date(values[index + 1].value) : null;
 
-                            // Show the date at the first tick of the view
+                            // Show the date for the first visible tick in the view
                             if (index === 0) {
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
-                            console.log(date.toDateString() + " comparing to " + prevDate?.toDateString())
-                            // Show the date at the first tick of each new day (first tick after 12:00 AM)
+                            // Show the date on the first visible tick of a new day
                             if (!prevDate || date.toDateString() !== prevDate.toDateString()) {
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
@@ -141,7 +139,7 @@ function displayHeartRateChart(labels, data) {
                             return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
                         },
                         autoSkip: true,
-                        maxTicksLimit: 10,
+                        maxTicksLimit: 10,  // Control number of labels shown
                     },
                     title: {
                         display: true,
@@ -160,6 +158,7 @@ function displayHeartRateChart(labels, data) {
         },
     });
 }
+
 
 // Handle panning: fetch previous day's data if necessary and force an update
 async function onPan({ chart }) {

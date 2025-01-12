@@ -123,20 +123,21 @@ function displayHeartRateChart(labels, data) {
                     ticks: {
                         callback: function (value, index, values) {
                             const date = new Date(value);  // Convert tick value to date
-                            const prevDate = index > 0 ? new Date(values[index - 1].value) : null;
 
-                            // Track the last shown date
-                            let lastShownDate = null;
+                            // Static variable to track the last shown date
+                            if (!this.lastShownDate) {
+                                this.lastShownDate = null;
+                            }
 
                             // Show the date for the first tick in the view
                             if (index === 0) {
-                                lastShownDate = date.toDateString();  // Set the last shown date
+                                this.lastShownDate = date.toDateString();  // Update the last shown date
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
                             // Show the date for the first visible tick of the new day
-                            if (!prevDate || date.toDateString() !== lastShownDate) {
-                                lastShownDate = date.toDateString();  // Update the last shown date
+                            if (date.toDateString() !== this.lastShownDate) {
+                                this.lastShownDate = date.toDateString();  // Update the last shown date
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
@@ -163,6 +164,7 @@ function displayHeartRateChart(labels, data) {
         },
     });
 }
+
 
 
 // Handle panning: fetch previous day's data if necessary and force an update

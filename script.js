@@ -123,25 +123,28 @@ function displayHeartRateChart(labels, data) {
                     ticks: {
                         autoSkip: true,
                         maxTicksLimit: 10,  // Control number of labels shown
+                        callback: function (value, index, values) {
+                            const tick = values[index];  // Visible tick values
+                            return tick.label || '';  // Return the formatted label
+                        },
                     },
                     afterBuildTicks: function (scale) {
                         let lastShownDate = null;
 
-                        // Modify ticks array directly
                         scale.ticks.forEach((tick, index) => {
                             const date = new Date(tick.value);
 
-                            // Show the date for the first visible tick
+                            // First tick always shows the full date and time
                             if (index === 0) {
                                 tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                                 lastShownDate = date.toDateString();
                             }
-                            // Show the date at the first tick of a new day
+                            // Show the date at the first tick of each new day
                             else if (date.toDateString() !== lastShownDate) {
                                 tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                                 lastShownDate = date.toDateString();
                             }
-                            // Default: show only time
+                            // Default: only show time in AM/PM
                             else {
                                 tick.label = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
                             }

@@ -121,31 +121,31 @@ function displayHeartRateChart(labels, data) {
                         tooltipFormat: 'MMMM d, h:mm a',  // Full date and time in tooltip
                     },
                     ticks: {
-                        callback: function (value, index, values) {
-                            const date = new Date(value);  // Convert tick value to date
-
-                            // Static variable to track the last shown date
-                            if (!this.lastShownDate) {
-                                this.lastShownDate = null;
-                            }
-
-                            // Show the date for the first tick in the view
-                            if (index === 0) {
-                                this.lastShownDate = date.toDateString();  // Update the last shown date
-                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                            }
-
-                            // Show the date for the first visible tick of the new day
-                            if (date.toDateString() !== this.lastShownDate) {
-                                this.lastShownDate = date.toDateString();  // Update the last shown date
-                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                            }
-
-                            // Default: show time in AM/PM format
-                            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-                        },
                         autoSkip: true,
                         maxTicksLimit: 10,  // Control number of labels shown
+                    },
+                    afterBuildTicks: function (scale) {
+                        let lastShownDate = null;
+
+                        // Modify ticks array directly
+                        scale.ticks.forEach((tick, index) => {
+                            const date = new Date(tick.value);
+
+                            // Show the date for the first visible tick
+                            if (index === 0) {
+                                tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                lastShownDate = date.toDateString();
+                            }
+                            // Show the date at the first tick of a new day
+                            else if (date.toDateString() !== lastShownDate) {
+                                tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                lastShownDate = date.toDateString();
+                            }
+                            // Default: show only time
+                            else {
+                                tick.label = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                            }
+                        });
                     },
                     title: {
                         display: true,

@@ -118,7 +118,7 @@ function displayHeartRateChart(labels, data) {
                         displayFormats: {
                             minute: 'h:mm a',  // AM/PM format
                         },
-                        tooltipFormat: 'MMMM D, h:mm a',  // Full date and time in tooltip
+                        tooltipFormat: 'MMMM d, h:mm a',  // Full date and time in tooltip
                     },
                     ticks: {
                         callback: function (value, index, values) {

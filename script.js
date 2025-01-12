@@ -131,14 +131,10 @@ function displayHeartRateChart(labels, data) {
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
+                            console.log(date.toDateString() + " comparing to " + prevDate?.toDateString())
                             // Show the date at the first tick of each new day (first tick after 12:00 AM)
                             if (!prevDate || date.toDateString() !== prevDate.toDateString()) {
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                            }
-
-                            // If the current tick is close to 12:00 AM but it's skipped due to zoom, show the date
-                            if (nextTickDate && nextTickDate.getHours() === 0 && nextTickDate.getMinutes() === 0) {
-                                return `${nextTickDate.toLocaleDateString()} 12:00 AM`;
                             }
 
                             // Default: show time in AM/PM format

@@ -80,7 +80,6 @@ async function onPan({ chart }) {
     }
 }
 
-// Display the chart with data
 function displayHeartRateChart(labels, data) {
     const fullDateLabels = labels.map(time => {
         const [hours, minutes] = time.split(':').map(Number);
@@ -88,6 +87,7 @@ function displayHeartRateChart(labels, data) {
         today.setHours(hours, minutes, 0, 0);  // Set the time (hours and minutes)
         return today;  // Return a Date object
     });
+
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
     new Chart(ctx, {
@@ -138,8 +138,29 @@ function displayHeartRateChart(labels, data) {
                     time: {
                         unit: 'minute',
                         displayFormats: {
-                            minute: 'HH:mm',
+                            minute: 'h:mm a',  // AM/PM format
                         },
+                        tooltipFormat: 'MMMM D, h:mm a',  // Full date and time in tooltip
+                    },
+                    ticks: {
+                        callback: function (value, index, values) {
+                            const date = new Date(value);
+
+                            // Display the date at 12:00 AM or for the first value in the visible range
+                            if (date.getHours() === 0 && date.getMinutes() === 0) {
+                                return `${date.toLocaleDateString()} 12:00 AM`;  // Show full date at midnight
+                            }
+
+                            // Show the date at the lowest visible value
+                            if (index === 0) {
+                                return date.toLocaleDateString();
+                            }
+
+                            // Default time format for all other labels
+                            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                        },
+                        autoSkip: true,
+                        maxTicksLimit: 10,  // Control number of labels shown
                     },
                     title: {
                         display: true,
@@ -158,6 +179,7 @@ function displayHeartRateChart(labels, data) {
         },
     });
 }
+
 
 // Main function to fetch today's data and render the chart
 async function fetchHeartRateData() {

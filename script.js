@@ -122,20 +122,26 @@ function displayHeartRateChart(labels, data) {
                     },
                     ticks: {
                         callback: function (value, index, values) {
-                            const date = new Date(value);
+                            const date = new Date(value);  // Convert tick value to date
                             const prevDate = index > 0 ? new Date(values[index - 1].value) : null;
+                            const nextTickDate = index < values.length - 1 ? new Date(values[index + 1].value) : null;
 
-                            // Show date if it's the first tick of the day
-                            if (prevDate && date.toDateString() !== prevDate.toDateString()) {
-                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                            }
-
-                            // Show the first visible date in the view (to ensure a date is always displayed)
+                            // Show the date at the first tick of the view
                             if (index === 0) {
                                 return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
                             }
 
-                            // Default: just show the time
+                            // Show the date at the first tick of each new day (first tick after 12:00 AM)
+                            if (!prevDate || date.toDateString() !== prevDate.toDateString()) {
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                            }
+
+                            // If the current tick is close to 12:00 AM but it's skipped due to zoom, show the date
+                            if (nextTickDate && nextTickDate.getHours() === 0 && nextTickDate.getMinutes() === 0) {
+                                return `${nextTickDate.toLocaleDateString()} 12:00 AM`;
+                            }
+
+                            // Default: show time in AM/PM format
                             return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
                         },
                         autoSkip: true,

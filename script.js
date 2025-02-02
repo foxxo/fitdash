@@ -217,7 +217,6 @@ document.getElementById('heartrateChart').addEventListener('mousedown', (event) 
     event.preventDefault();  // Prevent browser from selecting or dragging the chart element
 });
 
-// Store token after redirect
 window.onload = function () {
     const hash = window.location.hash;
     if (hash) {
@@ -225,6 +224,7 @@ window.onload = function () {
         if (tokenMatch) {
             localStorage.setItem('fitbit_access_token', tokenMatch[1]);
             window.location.hash = '';  // Clean up URL
+            location.reload();  // Reload page with the new token
         }
     }
 };

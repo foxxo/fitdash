@@ -31,40 +31,7 @@ async function fetchWorkoutSessions(date) {
         end: new Date(new Date(act.startTime).getTime() + act.duration)
     }));
 }
-async function fetchSleepPhases(date) {
-    const accessToken = localStorage.getItem('fitbit_access_token');
-    const formattedDate = date.toISOString().split('T')[0];
 
-    const response = await fetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${formattedDate}.json`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
-    });
-
-    if (!response.ok) {
-        console.error('Error fetching sleep data:', response.statusText);
-        return [];
-    }
-
-    const data = await response.json();
-    const sleepEntries = data.sleep || [];
-
-    const phases = [];
-
-    for (const session of sleepEntries) {
-        if (session.levels && session.levels.data) {
-            for (const stage of session.levels.data) {
-                phases.push({
-                    start: new Date(stage.dateTime),
-                    end: new Date(new Date(stage.dateTime).getTime() + stage.seconds * 1000),
-                    stage: stage.level
-                });
-            }
-        }
-    }
-
-    return phases;
-}
 async function fetchSleepPhases(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = date.toISOString().split('T')[0];
@@ -308,6 +275,56 @@ const restingHrPlugin = {
     }
 };
 
+const midnightMarkerPlugin = {
+    id: 'midnightMarkerPlugin',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: area, scales: { x } } = chart;
+
+        const start = x.getUserBounds().min;
+        const end = x.getUserBounds().max;
+
+        const startDate = new Date(start);
+        startDate.setHours(0, 0, 0, 0);
+
+        const MS_PER_DAY = 24 * 60 * 60 * 1000;
+        const numDays = Math.ceil((end - startDate) / MS_PER_DAY);
+
+        ctx.save();
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = 'rgba(100, 100, 255, 0.5)';
+        ctx.fillStyle = 'rgba(100, 100, 255, 0.9)';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        for (let i = 0; i <= numDays; i++) {
+            const midnight = new Date(startDate.getTime() + i * MS_PER_DAY);
+            const xPos = x.getPixelForValue(midnight);
+
+            if (xPos >= area.left && xPos <= area.right) {
+                // Draw vertical line
+                ctx.beginPath();
+                ctx.moveTo(xPos, area.top);
+                ctx.lineTo(xPos, area.bottom);
+                ctx.stroke();
+
+                // Format label: "Mon, Mar 24"
+                const label = midnight.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                // Draw label above the line
+                ctx.fillText(label, xPos, area.top + 4);
+            }
+        }
+
+        ctx.restore();
+    }
+};
+
+
 
 function getHRGradientColor(hr, restingHR = 60) {
     if (hr < restingHR) {
@@ -354,6 +371,7 @@ function displayHeartRateChart(labels, data) {
         workoutOverlayPlugin,
         sleepOverlayPlugin,
         restingHrPlugin,
+        midnightMarkerPlugin,
     );
 
     new Chart(ctx, {
@@ -423,23 +441,11 @@ function displayHeartRateChart(labels, data) {
                         autoSkip: true,
                         maxTicksLimit: 10,
                         callback: (function () {
-                            let lastDate = null;
 
                             return function (value, index) {
                                 const date = new Date(value);
                                 const dateStr = date.toDateString();
 
-                                // Always show full date + time on the first tick
-                                if (index === 0 || dateStr !== lastDate) {
-                                    lastDate = dateStr;
-                                    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                        hour12: true
-                                    })}`;
-                                }
-
-                                // Otherwise, just time
                                 return date.toLocaleTimeString([], {
                                     hour: 'numeric',
                                     minute: '2-digit',

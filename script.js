@@ -529,7 +529,7 @@ function displayHeartRateChart(labels, data) {
                     },
                 },
                 legend: {
-                    display: true,
+                    display: false,
                 },
             },
             scales: {
@@ -640,7 +640,7 @@ async function fetchHeartRateData() {
     displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
 }
 
-document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);
+
 document.getElementById('heartrateChart').addEventListener('mousedown', (event) => {
     event.preventDefault();  // Prevent browser from selecting or dragging the chart element
 });
@@ -653,6 +653,10 @@ window.onload = function () {
             localStorage.setItem('fitbit_access_token', tokenMatch[1]);
             window.location.hash = '';  // Clean up URL
             location.reload();  // Reload page with the new token
+            return;
         }
     }
+
+    // Auto-fetch data on load
+    fetchHeartRateData();
 };

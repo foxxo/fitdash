@@ -1,9 +1,4 @@
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f9;
-    margin: 0;
-    padding: 20px;
-}
+
 
 .container {
     max-width: 800px;
@@ -31,6 +26,25 @@ button {
     overflow-x: auto;
 }
 
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: #fff;
+    font-family: sans-serif;
+}
+
+#chart-container {
+    width: 80vw;
+    height: 80vh;
+    margin: 2vh auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 canvas {
-    pointer-events: auto;  /* Ensure mouse events are passed to the canvas */
+    width: 100% !important;
+    height: 100% !important;
 }

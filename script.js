@@ -372,6 +372,8 @@ function displayHeartRateChart(labels, data) {
                 segment: {
                     borderColor: ctx => {
                         const hr = ctx.p1.parsed.y;
+                        const time = new Date(point.parsed.x);
+                        const dateStr = time.toISOString().split('T')[0];
                         const restingHR = window.fitdashOverlayData?.restingHRByDate?.[dateStr] || 66;
                         return getHRGradientColor(hr, restingHR);
                     }

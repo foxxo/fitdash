@@ -66,7 +66,8 @@ async function fetchSleepPhases(date) {
 
     return phases;
 }
-async function fetchRestingHeartRate(date) {
+
+async function fetchDailySummary(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = date.toISOString().split('T')[0];
 
@@ -77,14 +78,18 @@ async function fetchRestingHeartRate(date) {
     });
 
     if (!response.ok) {
-        console.error('Error fetching resting heart rate:', response.statusText);
-        return null;
+        console.error('Error fetching HR summary:', response.statusText);
+        return { restingHR: null, calories: null };
     }
 
     const data = await response.json();
-    const resting = data['activities-heart']?.[0]?.value?.restingHeartRate;
-    return resting || null;
+    const value = data['activities-heart']?.[0]?.value || {};
+    return {
+        restingHR: value.restingHeartRate || null,
+        calories: value.caloriesOut || null
+    };
 }
+
 
 // Fetch heart rate data for a given date
 async function fetchHeartRateDataForDate(date) {
@@ -129,15 +134,19 @@ async function fetchOverlayDataForDate(date) {
     if (loadedOverlayDates.has(formattedDate)) return;
     loadedOverlayDates.add(formattedDate);
 
-    const [workouts, sleepPhases, restingHR] = await Promise.all([
+    // Fetch all overlay-relevant data for the day
+    const [workouts, sleepPhases, dailySummary] = await Promise.all([
         fetchWorkoutSessions(date),
         fetchSleepPhases(date),
-        fetchRestingHeartRate(date)
+        fetchDailySummary(date)
     ]);
+
+    const { restingHR, calories } = dailySummary;
 
     // Initialize overlay storage if missing
     if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
 
+    // Workouts and sleep phases — append to array
     window.fitdashOverlayData.workouts = [
         ...(window.fitdashOverlayData.workouts || []),
         ...workouts
@@ -146,9 +155,23 @@ async function fetchOverlayDataForDate(date) {
         ...(window.fitdashOverlayData.sleepPhases || []),
         ...sleepPhases
     ];
-    if (!window.fitdashOverlayData.restingHRByDate) window.fitdashOverlayData.restingHRByDate = {};
+
+    // Resting HR per day
+    if (!window.fitdashOverlayData.restingHRByDate) {
+        window.fitdashOverlayData.restingHRByDate = {};
+    }
     window.fitdashOverlayData.restingHRByDate[formattedDate] = restingHR;
+
+    // Daily summary (date, calories, etc.)
+    if (!window.fitdashOverlayData.dailySummaries) {
+        window.fitdashOverlayData.dailySummaries = {};
+    }
+    window.fitdashOverlayData.dailySummaries[formattedDate] = {
+        restingHR,
+        calories
+    };
 }
+
 
 // Function to add new data to the chart
 function addDataToChart(chart, newData, date) {
@@ -163,6 +186,79 @@ function addDataToChart(chart, newData, date) {
 
     chart.update();
 }
+
+const summaryBubblePlugin = {
+    id: 'summaryBubblePlugin',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: area, scales: { x } } = chart;
+        const summaries = window.fitdashOverlayData?.dailySummaries || {};
+
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textBaseline = 'bottom';
+
+        for (const [dateStr, summary] of Object.entries(summaries)) {
+            const dateMidnight = new Date(`${dateStr}T00:00:00`);
+            const xPos = x.getPixelForValue(dateMidnight);
+
+            if (xPos >= area.left && xPos <= area.right && summary.calories != null) {
+                drawBubble(ctx, xPos, area.top + 22, dateStr, summary.calories);
+            }
+        }
+
+        // Draw current time marker and summary
+        const latestX = x.getPixelForValue(now);
+        const todaySummary = summaries[todayStr];
+
+        if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
+            drawBubble(ctx, latestX, area.top + 22, todayStr, todaySummary.calories, true);
+        }
+
+        ctx.restore();
+    }
+};
+function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
+    const date = new Date(dateStr);
+    const label = date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+    });
+    const calText = `${calories.toLocaleString()} cal`;
+
+    const text = `${label} – ${calText}`;
+    const padding = 6;
+    const width = ctx.measureText(text).width + padding * 2;
+    const height = 24;
+
+    const radius = 6;
+    const left = x - width / 2;
+    const top = y;
+
+    // Bubble background
+    ctx.fillStyle = highlight ? 'rgba(255, 255, 200, 0.9)' : 'rgba(230, 240, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(left + radius, top);
+    ctx.lineTo(left + width - radius, top);
+    ctx.quadraticCurveTo(left + width, top, left + width, top + radius);
+    ctx.lineTo(left + width, top + height - radius);
+    ctx.quadraticCurveTo(left + width, top + height, left + width - radius, top + height);
+    ctx.lineTo(left + radius, top + height);
+    ctx.quadraticCurveTo(left, top + height, left, top + height - radius);
+    ctx.lineTo(left, top + radius);
+    ctx.quadraticCurveTo(left, top, left + radius, top);
+    ctx.closePath();
+    ctx.fill();
+
+    // Bubble text
+    ctx.fillStyle = '#333';
+    ctx.fillText(text, x, y + height / 2 + 4);
+}
+
 
 const dayBackgroundPlugin = {
     id: 'dayBackgroundPlugin',
@@ -372,6 +468,7 @@ function displayHeartRateChart(labels, data) {
         sleepOverlayPlugin,
         restingHrPlugin,
         midnightMarkerPlugin,
+        summaryBubblePlugin
     );
 
     new Chart(ctx, {
@@ -509,7 +606,7 @@ async function fetchHeartRateData() {
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
-        fetchRestingHeartRate(today)
+        fetchDailySummary(today)
     ]);
 
     if (heartRateData.length === 0) {

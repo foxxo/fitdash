@@ -155,29 +155,27 @@ function displayHeartRateChart(labels, data) {
                     ticks: {
                         autoSkip: true,
                         maxTicksLimit: 10,
-                        callback: (function () {
-                            const shownDates = new Set();
+                        callback: function (value, index, ticks) {
+                            const date = new Date(value);
+                            const dateStr = date.toDateString();
 
-                            return function (value, index, ticks) {
-                                const date = new Date(value);
-                                const dateString = date.toDateString();
+                            // Always show date on first visible tick
+                            if (index === 0) {
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                            }
 
-                                // First tick in view: always show full date + time
-                                if (index === 0) {
-                                    shownDates.add(dateString);
-                                    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                                }
+                            // Compare to previous visible tick
+                            const prevDate = new Date(ticks[index - 1].value);
+                            const prevDateStr = prevDate.toDateString();
 
-                                // First tick of a new day
-                                if (!shownDates.has(dateString)) {
-                                    shownDates.add(dateString);
-                                    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                                }
+                            if (dateStr !== prevDateStr) {
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                            }
 
-                                // Otherwise: just show time
-                                return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-                            };
-                        })()
+                            // Default to time only
+                            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                        }
+                        ()
                     },
                     title: {
                         display: true,

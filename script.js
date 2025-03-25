@@ -7,6 +7,12 @@ currentStartDate.setHours(0, 0, 0, 0);  // Set to midnight for consistency
 const fitbitApiBaseUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/`;
 const loadedDates = new Set();  // Track dates that have already been fetched
 
+const HR_ZONES = [
+    { name: 'Fat Burn', min: 90, max: 119, color: 'yellow' },
+    { name: 'Cardio',   min: 120, max: 149, color: 'orange' },
+    { name: 'Peak',     min: 150, max: 250, color: 'red' }
+];
+
 
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
@@ -246,53 +252,6 @@ const sleepOverlayPlugin = {
     }
 };
 
-
-const restingHrPlugin = {
-    id: 'restingHrPlugin',
-    beforeDraw(chart) {
-        const restingHR = window.fitdashOverlayData?.restingHR;
-        const { ctx, chartArea: area, scales: { y } } = chart;
-
-        const yRest = y.getPixelForValue(restingHR);
-
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0, 0, 255, 0.4)';
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.moveTo(area.left, yRest);
-        ctx.lineTo(area.right, yRest);
-        ctx.stroke();
-        ctx.restore();
-    }
-};
-
-
-const hrZonePlugin = {
-    id: 'hrZonePlugin',
-    beforeDraw(chart) {
-        const { ctx, chartArea: area, scales: { y } } = chart;
-
-        const zones = [
-            { label: 'Fat Burn', min: 90, max: 120, color: 'rgba(255, 255, 0, 0.08)' },
-            { label: 'Cardio', min: 120, max: 150, color: 'rgba(255, 140, 0, 0.08)' },
-            { label: 'Peak', min: 150, max: 200, color: 'rgba(255, 0, 0, 0.08)' }
-        ];
-
-        ctx.save();
-
-        zones.forEach(({ min, max, color }) => {
-            const yTop = y.getPixelForValue(max);
-            const yBottom = y.getPixelForValue(min);
-            ctx.fillStyle = color;
-            ctx.fillRect(area.left, yTop, area.right - area.left, yBottom - yTop);
-        });
-
-        ctx.restore();
-    }
-};
-
-
-
 function displayHeartRateChart(labels, data) {
     const fullDateLabels = labels.map(time => {
         const [hours, minutes] = time.split(':').map(Number);
@@ -306,9 +265,7 @@ function displayHeartRateChart(labels, data) {
     Chart.register(
         dayBackgroundPlugin,
         workoutOverlayPlugin,
-        sleepOverlayPlugin,
-        restingHrPlugin,
-        hrZonePlugin
+        sleepOverlayPlugin
     );
 
     new Chart(ctx, {
@@ -318,12 +275,22 @@ function displayHeartRateChart(labels, data) {
             datasets: [{
                 label: 'Heart Rate (BPM)',
                 data: data,
-                borderColor: 'rgba(255, 99, 132, 1)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgba(99, 160, 255, 1)',  // fallback
                 pointRadius: 1,
                 fill: false,
                 tension: 0.1,
-            }],
+
+                segment: {
+                    borderColor: ctx => {
+                        const y = ctx.p1.parsed.y;
+
+                        if (y >= 150) return 'red';
+                        if (y >= 120) return 'orange';
+                        if (y >= 90)  return 'yellow';
+                        return 'light blue'; // below zone
+                    }
+                }
+            }]
         },
         options: {
             responsive: true,

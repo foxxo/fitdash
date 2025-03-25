@@ -7,13 +7,6 @@ currentStartDate.setHours(0, 0, 0, 0);  // Set to midnight for consistency
 const fitbitApiBaseUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/`;
 const loadedDates = new Set();  // Track dates that have already been fetched
 
-const HR_ZONES = [
-    { name: 'Fat Burn', min: 90, max: 119, color: 'yellow' },
-    { name: 'Cardio',   min: 120, max: 149, color: 'orange' },
-    { name: 'Peak',     min: 150, max: 250, color: 'red' }
-];
-
-
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = date.toISOString().split('T')[0];

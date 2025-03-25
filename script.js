@@ -602,7 +602,7 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
-    const [heartRateData, workouts, sleepPhases, restingHR] = await Promise.all([
+    const [heartRateData, workouts, sleepPhases ] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
@@ -617,11 +617,16 @@ async function fetchHeartRateData() {
     const timeLabels = heartRateData.map(entry => entry.time);
     const heartRateValues = heartRateData.map(entry => entry.value);
 
-    // Store fetched overlays for plugins
+    const dailySummary = await fetchDailySummary(today);
+    const { restingHR, calories } = dailySummary;
+
     window.fitdashOverlayData = {
         workouts,
         sleepPhases,
-        restingHR
+        restingHRByDate: { [today.toISOString().split('T')[0]]: restingHR },
+        dailySummaries: {
+            [today.toISOString().split('T')[0]]: { restingHR, calories }
+        }
     };
 
     displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart

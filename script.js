@@ -155,6 +155,33 @@ async function fetchHeartRateDataForDate(date) {
     }
 }
 
+async function fetchOverlayDataForDate(date) {
+    const formattedDate = date.toISOString().split('T')[0];
+
+    if (loadedOverlayDates.has(formattedDate)) return;
+    loadedOverlayDates.add(formattedDate);
+
+    const [workouts, sleepPhases, restingHR] = await Promise.all([
+        fetchWorkoutSessions(date),
+        fetchSleepPhases(date),
+        fetchRestingHeartRate(date)
+    ]);
+
+    // Initialize overlay storage if missing
+    if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
+
+    window.fitdashOverlayData.workouts = [
+        ...(window.fitdashOverlayData.workouts || []),
+        ...workouts
+    ];
+    window.fitdashOverlayData.sleepPhases = [
+        ...(window.fitdashOverlayData.sleepPhases || []),
+        ...sleepPhases
+    ];
+    if (!window.fitdashOverlayData.restingHRByDate) window.fitdashOverlayData.restingHRByDate = {};
+    window.fitdashOverlayData.restingHRByDate[formattedDate] = restingHR;
+}
+
 // Function to add new data to the chart
 function addDataToChart(chart, newData, date) {
     const formattedDate = date.toISOString().split('T')[0];
@@ -198,7 +225,6 @@ const dayBackgroundPlugin = {
         }
     }
 };
-
 const workoutOverlayPlugin = {
     id: 'workoutOverlayPlugin',
     beforeDatasetsDraw(chart) {
@@ -206,44 +232,81 @@ const workoutOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
-        ctx.fillStyle = 'rgba(123,253,109,0.78)';
+        ctx.fillStyle = 'rgba(123,253,109,0.78)'; // orange
 
         workouts.forEach(({ start, end }) => {
             const xStart = x.getPixelForValue(start);
             const xEnd = x.getPixelForValue(end);
-            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+
+            if (xEnd >= area.left && xStart <= area.right) {
+                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+            }
         });
 
         ctx.restore();
     }
 };
-
 
 const sleepOverlayPlugin = {
     id: 'sleepOverlayPlugin',
     beforeDatasetsDraw(chart) {
+        const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
-
-        const phases = window.fitdashOverlayData?.sleepPhases || [];
 
         const stageColors = {
             light: 'rgba(173, 216, 230, 0.2)', // light blue
             deep: 'rgba(138, 43, 226, 0.2)',   // purple
-            rem:  'rgba(255, 182, 193, 0.2)'   // pink
+            rem:  'rgba(255, 182, 193, 0.2)',  // pink
+            wake: 'rgba(200, 200, 200, 0.15)'  // light gray
         };
 
         ctx.save();
 
-        phases.forEach(({ start, end, stage }) => {
+        sleepPhases.forEach(({ start, end, stage }) => {
             const xStart = x.getPixelForValue(start);
             const xEnd = x.getPixelForValue(end);
-            ctx.fillStyle = stageColors[stage] || 'rgba(200, 200, 200, 0.2)';
-            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+
+            if (xEnd >= area.left && xStart <= area.right) {
+                ctx.fillStyle = stageColors[stage] || 'rgba(0,0,0,0.05)';
+                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+            }
         });
 
         ctx.restore();
     }
 };
+
+const restingHrPlugin = {
+    id: 'restingHrPlugin',
+    beforeDraw(chart) {
+        const { ctx, chartArea: area, scales: { x, y } } = chart;
+        const restingHRs = window.fitdashOverlayData?.restingHRByDate || {};
+
+        for (const [dateStr, hr] of Object.entries(restingHRs)) {
+            if (!hr) continue;
+
+            const hrY = y.getPixelForValue(hr);
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 0, 255, 0.3)';
+            ctx.setLineDash([4, 4]);
+
+            // Draw line only if visible
+            const date = new Date(dateStr + 'T00:00:00');
+            const startX = x.getPixelForValue(date);
+            const endX = x.getPixelForValue(new Date(date.getTime() + 24 * 60 * 60 * 1000));
+
+            if (endX >= area.left && startX <= area.right) {
+                ctx.beginPath();
+                ctx.moveTo(startX, hrY);
+                ctx.lineTo(endX, hrY);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+    }
+};
+
 
 function getHRGradientColor(hr) {
     const zones = [
@@ -278,7 +341,8 @@ function displayHeartRateChart(labels, data) {
     Chart.register(
         dayBackgroundPlugin,
         workoutOverlayPlugin,
-        sleepOverlayPlugin
+        sleepOverlayPlugin,
+        restingHrPlugin,
     );
 
     new Chart(ctx, {
@@ -402,6 +466,7 @@ async function onPan({ chart }) {
         newDate.setDate(newDate.getDate() - 1);  // Go one day back
 
         const newData = await fetchHeartRateDataForDate(newDate);
+        await fetchOverlayDataForDate(newDate);
         if (newData.length > 0) {
             addDataToChart(chart, newData, newDate);
             currentStartDate = newDate;  // Update start date to include the new data

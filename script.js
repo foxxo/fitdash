@@ -6,6 +6,7 @@ let currentStartDate = new Date();  // Start with today
 currentStartDate.setHours(0, 0, 0, 0);  // Set to midnight for consistency
 const fitbitApiBaseUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/`;
 const loadedDates = new Set();  // Track dates that have already been fetched
+const loadedOverlayDates = new Set();
 
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');

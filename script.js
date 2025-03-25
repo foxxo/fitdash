@@ -252,6 +252,26 @@ const sleepOverlayPlugin = {
     }
 };
 
+function getHRGradientColor(hr) {
+    const zones = [
+        { min: 0, max: 111, startHue: 200, endHue: 200 }, // Light Blue (flat)
+        { min: 111, max: 136, startHue: 200, endHue: 50 }, // Light Blue → Yellow
+        { min: 136, max: 162, startHue: 50, endHue: 25 },  // Yellow → Orange
+        { min: 162, max: 220, startHue: 25, endHue: 0 },   // Orange → Red
+    ];
+
+    for (const zone of zones) {
+        if (hr < zone.max) {
+            const ratio = (hr - zone.min) / (zone.max - zone.min);
+            const hue = zone.startHue + (zone.endHue - zone.startHue) * ratio;
+            return `hsl(${hue}, 100%, 50%)`;
+        }
+    }
+
+    return 'hsl(0, 100%, 50%)'; // Red fallback
+}
+
+
 function displayHeartRateChart(labels, data) {
     const fullDateLabels = labels.map(time => {
         const [hours, minutes] = time.split(':').map(Number);
@@ -276,18 +296,15 @@ function displayHeartRateChart(labels, data) {
                 label: 'Heart Rate (BPM)',
                 data: data,
                 borderColor: 'rgba(99, 160, 255, 1)',  // fallback
-                pointRadius: 1,
+                pointRadius: 0,
+                pointRadiusOnHover: 0,
                 fill: false,
                 tension: 0.1,
 
                 segment: {
                     borderColor: ctx => {
-                        const y = ctx.p1.parsed.y;
-
-                        if (y >= 150) return 'red';
-                        if (y >= 120) return 'orange';
-                        if (y >= 90)  return 'yellow';
-                        return 'blue'; // below zone
+                        const hr = ctx.p1.parsed.y;
+                        return getHRGradientColor(hr);
                     }
                 }
             }]

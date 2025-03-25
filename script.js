@@ -233,7 +233,7 @@ const workoutOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
-        ctx.fillStyle = 'rgba(123,253,109,0.78)'; // orange
+        ctx.fillStyle = 'rgba(123,253,109,0.51)'; // orange
 
         workouts.forEach(({ start, end }) => {
             const xStart = x.getPixelForValue(start);
@@ -255,10 +255,10 @@ const sleepOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         const stageColors = {
-            light: 'rgba(173, 216, 230, 0.2)', // light blue
-            deep: 'rgba(138, 43, 226, 0.2)',   // purple
-            rem:  'rgba(255, 182, 193, 0.2)',  // pink
-            wake: 'rgba(200, 200, 200, 0.15)'  // light gray
+            light: 'rgba(105,218,255,0.4)', // light blue
+            deep: 'rgba(138,43,226,0.74)',   // purple
+            rem:  'rgba(233,113,248,0.66)',  // pink
+            wake: 'rgba(255,228,152,0.66)'  // light gray
         };
 
         ctx.save();
@@ -288,7 +288,7 @@ const restingHrPlugin = {
 
             const hrY = y.getPixelForValue(hr);
             ctx.save();
-            ctx.strokeStyle = 'rgba(0, 0, 255, 0.3)';
+            ctx.strokeStyle = 'rgba(0,0,255,0.88)';
             ctx.setLineDash([4, 4]);
 
             // Draw line only if visible
@@ -309,12 +309,21 @@ const restingHrPlugin = {
 };
 
 
-function getHRGradientColor(hr) {
+function getHRGradientColor(hr, restingHR = 60) {
+    if (hr < restingHR) {
+        // Below resting: blue → purple
+        const minHR = 40;  // minimum expected HR
+        const ratio = Math.max(0, Math.min(1, (hr - minHR) / (restingHR - minHR)));
+        const hue = 270 - (70 * ratio);  // 270 → 200
+        return `hsl(${hue}, 100%, 50%)`;
+    }
+
+    // Above resting: standard zone colors
     const zones = [
-        { min: 0, max: 111, startHue: 200, endHue: 200 }, // Light Blue (flat)
-        { min: 111, max: 136, startHue: 200, endHue: 50 }, // Light Blue → Yellow
-        { min: 136, max: 162, startHue: 50, endHue: 25 },  // Yellow → Orange
-        { min: 162, max: 220, startHue: 25, endHue: 0 },   // Orange → Red
+        { min: restingHR, max: 111, startHue: 200, endHue: 200 },
+        { min: 111, max: 136, startHue: 200, endHue: 50 },
+        { min: 136, max: 162, startHue: 50, endHue: 25 },
+        { min: 162, max: 220, startHue: 25, endHue: 0 }
     ];
 
     for (const zone of zones) {
@@ -325,8 +334,9 @@ function getHRGradientColor(hr) {
         }
     }
 
-    return 'hsl(0, 100%, 50%)'; // Red fallback
+    return 'hsl(0, 100%, 50%)'; // max red fallback
 }
+
 
 
 function displayHeartRateChart(labels, data) {
@@ -362,7 +372,8 @@ function displayHeartRateChart(labels, data) {
                 segment: {
                     borderColor: ctx => {
                         const hr = ctx.p1.parsed.y;
-                        return getHRGradientColor(hr);
+                        const restingHR = window.fitdashOverlayData?.restingHRByDate?.[dateStr] || 66;
+                        return getHRGradientColor(hr, restingHR);
                     }
                 }
             }]

@@ -84,11 +84,19 @@ async function fetchDailySummary(date) {
 
     const data = await response.json();
     const value = data['activities-heart']?.[0]?.value || {};
+
+    const restingHR = value.restingHeartRate || null;
+
+    const calories = (value.heartRateZones || []).reduce((sum, zone) => {
+        return sum + (zone.caloriesOut || 0);
+    }, 0);
+
     return {
-        restingHR: value.restingHeartRate || null,
-        calories: value.caloriesOut || null
+        restingHR,
+        calories: Math.round(calories)
     };
 }
+
 
 
 // Fetch heart rate data for a given date
@@ -631,7 +639,6 @@ async function fetchHeartRateData() {
 
     displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
 }
-
 
 document.getElementById('fetchData').addEventListener('click', fetchHeartRateData);
 document.getElementById('heartrateChart').addEventListener('mousedown', (event) => {

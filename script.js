@@ -88,6 +88,108 @@ const dayBackgroundPlugin = {
     }
 };
 
+const workoutOverlayPlugin = {
+    id: 'workoutOverlayPlugin',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: area, scales: { x } } = chart;
+
+        // Mock workout sessions
+        const workouts = [
+            { start: new Date('2025-03-24T07:30:00'), end: new Date('2025-03-24T08:15:00') },
+            { start: new Date('2025-03-24T18:00:00'), end: new Date('2025-03-24T18:45:00') }
+        ];
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 165, 0, 0.2)'; // light orange
+
+        workouts.forEach(({ start, end }) => {
+            const xStart = x.getPixelForValue(start);
+            const xEnd = x.getPixelForValue(end);
+            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+        });
+
+        ctx.restore();
+    }
+};
+
+
+const sleepOverlayPlugin = {
+    id: 'sleepOverlayPlugin',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: area, scales: { x } } = chart;
+
+        // Mock sleep phases
+        const phases = [
+            { start: new Date('2025-03-24T23:00:00'), end: new Date('2025-03-25T00:30:00'), stage: 'light' },
+            { start: new Date('2025-03-25T00:30:00'), end: new Date('2025-03-25T01:15:00'), stage: 'deep' },
+            { start: new Date('2025-03-25T01:15:00'), end: new Date('2025-03-25T02:00:00'), stage: 'rem' }
+        ];
+
+        const stageColors = {
+            light: 'rgba(173, 216, 230, 0.2)', // light blue
+            deep: 'rgba(138, 43, 226, 0.2)',   // purple
+            rem:  'rgba(255, 182, 193, 0.2)'   // pink
+        };
+
+        ctx.save();
+
+        phases.forEach(({ start, end, stage }) => {
+            const xStart = x.getPixelForValue(start);
+            const xEnd = x.getPixelForValue(end);
+            ctx.fillStyle = stageColors[stage] || 'rgba(200, 200, 200, 0.2)';
+            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+        });
+
+        ctx.restore();
+    }
+};
+
+
+const restingHrPlugin = {
+    id: 'restingHrPlugin',
+    beforeDraw(chart) {
+        const restingHR = 60; // Example resting HR
+        const { ctx, chartArea: area, scales: { y } } = chart;
+
+        const yRest = y.getPixelForValue(restingHR);
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 0, 255, 0.4)';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(area.left, yRest);
+        ctx.lineTo(area.right, yRest);
+        ctx.stroke();
+        ctx.restore();
+    }
+};
+
+
+const hrZonePlugin = {
+    id: 'hrZonePlugin',
+    beforeDraw(chart) {
+        const { ctx, chartArea: area, scales: { y } } = chart;
+
+        const zones = [
+            { label: 'Fat Burn', min: 90, max: 120, color: 'rgba(255, 255, 0, 0.08)' },
+            { label: 'Cardio', min: 120, max: 150, color: 'rgba(255, 140, 0, 0.08)' },
+            { label: 'Peak', min: 150, max: 200, color: 'rgba(255, 0, 0, 0.08)' }
+        ];
+
+        ctx.save();
+
+        zones.forEach(({ min, max, color }) => {
+            const yTop = y.getPixelForValue(max);
+            const yBottom = y.getPixelForValue(min);
+            ctx.fillStyle = color;
+            ctx.fillRect(area.left, yTop, area.right - area.left, yBottom - yTop);
+        });
+
+        ctx.restore();
+    }
+};
+
+
 
 function displayHeartRateChart(labels, data) {
     const fullDateLabels = labels.map(time => {
@@ -98,7 +200,14 @@ function displayHeartRateChart(labels, data) {
     });
 
     const ctx = document.getElementById('heartrateChart').getContext('2d');
-    Chart.register(dayBackgroundPlugin);
+
+    Chart.register(
+        dayBackgroundPlugin,
+        workoutOverlayPlugin,
+        sleepOverlayPlugin,
+        restingHrPlugin,
+        hrZonePlugin
+    );
 
     new Chart(ctx, {
         type: 'line',

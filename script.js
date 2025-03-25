@@ -213,7 +213,7 @@ const workoutOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
-        ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
+        ctx.fillStyle = 'rgba(123,253,109,0.78)';
 
         workouts.forEach(({ start, end }) => {
             const xStart = x.getPixelForValue(start);
@@ -287,7 +287,7 @@ function displayHeartRateChart(labels, data) {
                         if (y >= 150) return 'red';
                         if (y >= 120) return 'orange';
                         if (y >= 90)  return 'yellow';
-                        return 'light blue'; // below zone
+                        return 'blue'; // below zone
                     }
                 }
             }]

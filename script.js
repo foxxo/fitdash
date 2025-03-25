@@ -155,27 +155,38 @@ function displayHeartRateChart(labels, data) {
                     ticks: {
                         autoSkip: true,
                         maxTicksLimit: 10,
-                        callback: function (value, index, ticks) {
+                        callback: function (value, index, values) {
                             const date = new Date(value);
                             const dateStr = date.toDateString();
 
-                            // Always show date on first visible tick
+                            // Always show full date + time on the first visible tick
                             if (index === 0) {
-                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true
+                                })}`;
                             }
 
-                            // Compare to previous visible tick
-                            const prevDate = new Date(ticks[index - 1].value);
+                            // Compare this tick’s date to the previous visible tick’s date
+                            const prevDate = new Date(values[index - 1].value);
                             const prevDateStr = prevDate.toDateString();
 
                             if (dateStr !== prevDateStr) {
-                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true
+                                })}`;
                             }
 
-                            // Default to time only
-                            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-                        }
-                        ()
+                            // Otherwise just show time
+                            return date.toLocaleTimeString([], {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                            });
+                        }()
                     },
                     title: {
                         display: true,

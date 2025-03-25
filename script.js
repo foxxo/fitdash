@@ -122,33 +122,30 @@ function displayHeartRateChart(labels, data) {
                     },
                     ticks: {
                         autoSkip: true,
-                        maxTicksLimit: 10,  // Control number of labels shown
-                        callback: function (value, index, values) {
-                            const tick = values[index];  // Visible tick values
-                            return tick.label || '';  // Return the formatted label
-                        },
-                    },
-                    afterBuildTicks: function (scale) {
-                        let lastShownDate = null;
+                        maxTicksLimit: 10,
+                        callback: (function () {
+                            const shownDates = new Set();
 
-                        scale.ticks.forEach((tick, index) => {
-                            const date = new Date(tick.value);
+                            return function (value, index, ticks) {
+                                const date = new Date(value);
+                                const dateString = date.toDateString();
 
-                            // First tick always shows the full date and time
-                            if (index === 0) {
-                                tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                                lastShownDate = date.toDateString();
-                            }
-                            // Show the date at the first tick of each new day
-                            else if (date.toDateString() !== lastShownDate) {
-                                tick.label = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
-                                lastShownDate = date.toDateString();
-                            }
-                            // Default: only show time in AM/PM
-                            else {
-                                tick.label = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-                            }
-                        });
+                                // First tick in view: always show full date + time
+                                if (index === 0) {
+                                    shownDates.add(dateString);
+                                    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                }
+
+                                // First tick of a new day
+                                if (!shownDates.has(dateString)) {
+                                    shownDates.add(dateString);
+                                    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                                }
+
+                                // Otherwise: just show time
+                                return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+                            };
+                        })()
                     },
                     title: {
                         display: true,

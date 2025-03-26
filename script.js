@@ -252,36 +252,6 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     ctx.fillText(text, x, y + height / 2 + 4);
 }
 
-
-const dayBackgroundPlugin = {
-    id: 'dayBackgroundPlugin',
-    beforeDatasetsDraw(chart, args, pluginOptions) {
-        const { ctx, chartArea: area, scales: { x } } = chart;
-
-        const start = x.getUserBounds().min;
-        const end = x.getUserBounds().max;
-
-        const startDate = new Date(start);
-        startDate.setHours(0, 0, 0, 0);  // Align to midnight
-
-        const MS_PER_DAY = 24 * 60 * 60 * 1000;
-        const numDays = Math.ceil((end - startDate.getTime()) / MS_PER_DAY);
-
-        for (let i = 0; i <= numDays; i++) {
-            const dayStart = new Date(startDate.getTime() + i * MS_PER_DAY);
-            const dayEnd = new Date(dayStart.getTime() + MS_PER_DAY);
-
-            const xStart = x.getPixelForValue(dayStart);
-            const xEnd = x.getPixelForValue(dayEnd);
-
-            if (xEnd < area.left || xStart > area.right) continue; // Skip if off screen
-
-            // Alternate light gray shading
-            ctx.fillStyle = i % 2 === 0 ? 'rgba(240, 240, 240, 0.5)' : 'rgba(255, 255, 255, 0)';
-            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
-        }
-    }
-};
 const workoutOverlayPlugin = {
     id: 'workoutOverlayPlugin',
     beforeDatasetsDraw(chart) {
@@ -456,7 +426,6 @@ function displayHeartRateChart(labels, data) {
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
     Chart.register(
-        dayBackgroundPlugin,
         workoutOverlayPlugin,
         sleepOverlayPlugin,
         restingHrPlugin,

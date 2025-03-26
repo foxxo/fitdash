@@ -22,7 +22,6 @@ async function fetchWorkoutSessions(date) {
     const response = await fetch(`https://api.fitbit.com/1/user/-/activities/list.json?afterDate=${formattedDate}T00:00:00&sort=asc&limit=100&offset=0`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
-    updateRateLimitStatus(response.headers);
 
     if (!response.ok) return [];
 
@@ -81,7 +80,7 @@ async function fetchSleepPhases(date) {
     const response = await fetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${formattedDate}.json`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
-    updateRateLimitStatus(response.headers);
+
     if (!response.ok) return [];
 
     const data = await response.json();
@@ -109,7 +108,7 @@ async function fetchDailySummary(date) {
     const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d.json`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
-    updateRateLimitStatus(response.headers);
+
     if (!response.ok) return { restingHR: null, calories: null };
 
     const data = await response.json();
@@ -131,7 +130,7 @@ async function fetchHeartRateDataForDate(date) {
         const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
-        updateRateLimitStatus(response.headers);
+
         if (!response.ok) throw new Error('Failed to fetch HR');
 
         const data = await response.json();
@@ -624,23 +623,3 @@ window.onload = function () {
 document.getElementById('reauthBtn').addEventListener('click', () => {
     window.location = AUTH_URL;
 });
-
-function updateRateLimitStatus(headers) {
-    for (const [key, value] of headers.entries()) {
-        console.log(`Header: ${key} => ${value}`);
-    }
-
-    const remaining = headers.get('fitbit-rate-limit-remaining');
-    const resetSeconds = parseInt(headers.get('fitbit-rate-limit-reset'), 10);
-    const statusEl = document.getElementById('rateLimitStatus');
-
-    if (remaining === '-1' && resetSeconds > 0) {
-        const mins = Math.floor(resetSeconds / 60);
-        const secs = resetSeconds % 60;
-        statusEl.textContent = `⏳ Resets in: ${mins}m ${secs}s`;
-    } else if (remaining !== null) {
-        statusEl.textContent = `🔋 Remaining: ${remaining}`;
-    } else {
-        statusEl.textContent = `⚠️ Rate info unavailable`;
-    }
-}

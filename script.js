@@ -57,10 +57,10 @@ const workoutEmojiPlugin = {
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
                 const emojiY = area.bottom + 4;
-                const textY = emojiY + 40; // Push second line down
+                const textY = emojiY + 32; // Push second line down
 
                 ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // Ensure full opacity
-                ctx.font = '40px sans-serif';
+                ctx.font = '32px sans-serif';
                 ctx.fillText(emoji, xPos, emojiY);
                 ctx.font = '12px sans-serif'; // Smaller for text
                 ctx.fillText(`${Math.round(calories)} cal`, xPos, textY);

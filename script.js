@@ -49,19 +49,18 @@ const workoutEmojiPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
-        ctx.fillStyle = '#000';
         ctx.textAlign = 'center';
-        ctx.font = '40px sans-serif';
         ctx.textBaseline = 'top';
 
-        workouts.forEach(({ start, activityName, calories }) => {
-            const xPos = x.getPixelForValue(start);
+        workouts.forEach(({ start, activityName, calories, end }) => {
+            const xPos = x.getPixelForValue(start) + x.getPixelForValue(end) / 2;
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
                 const emojiY = area.bottom + 4;
-                const textY = emojiY + 32; // Push second line down
+                const textY = emojiY + 48; // Push second line down
 
                 ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // Ensure full opacity
+                ctx.font = '40px sans-serif';
                 ctx.fillText(emoji, xPos, emojiY);
                 ctx.font = '12px sans-serif'; // Smaller for text
                 ctx.fillText(`${Math.round(calories)} cal`, xPos, textY);

@@ -611,6 +611,7 @@ async function onPan({ chart }) {
 // Main function to fetch today's data and render the chart
 async function fetchHeartRateData() {
     const today = new Date();
+    console.log(today.toISOString())
 
     const [heartRateData, workouts, sleepPhases, dailySummary ] = await Promise.all([
         fetchHeartRateDataForDate(today),

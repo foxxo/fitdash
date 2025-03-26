@@ -195,13 +195,6 @@ function addDataToChart(chart, newData, date) {
     chart.update();
 }
 
-function getLocalDateString(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
 const summaryBubblePlugin = {
     id: 'summaryBubblePlugin',
     beforeDatasetsDraw(chart) {
@@ -209,7 +202,7 @@ const summaryBubblePlugin = {
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
 
         const now = new Date();
-        const todayStr = getLocalDateString(now);
+        const todayStr = date.toISOString().split('T')[0];
 
 
         ctx.save();

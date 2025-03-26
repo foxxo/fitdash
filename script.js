@@ -202,7 +202,8 @@ const summaryBubblePlugin = {
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
 
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+        const todayStr = getLocalDateString(now);
+
 
         ctx.save();
         ctx.textAlign = 'center';
@@ -210,8 +211,10 @@ const summaryBubblePlugin = {
         ctx.textBaseline = 'bottom';
 
         for (const [dateStr, summary] of Object.entries(summaries)) {
-            const dateMidnight = new Date(`${dateStr}T00:00:00`);
-            const xPos = x.getPixelForValue(dateMidnight);
+            const midnightNextDay = new Date(`${dateStr}T00:00:00`);
+            midnightNextDay.setDate(midnightNextDay.getDate() + 1);
+            const xPos = x.getPixelForValue(midnightNextDay);
+
 
             if (xPos >= area.left && xPos <= area.right && summary.calories != null) {
                 drawBubble(ctx, xPos, area.top + 22, dateStr, summary.calories);

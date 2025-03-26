@@ -153,7 +153,7 @@ const summaryBubblePlugin = {
 
         for (const [dateStr, summary] of Object.entries(summaries)) {
             const midnightNextDay = new Date(`${dateStr}T00:00:00`);
-            midnightNextDay.setDate(midnightNextDay.getDate() + 1);
+
             const xPos = x.getPixelForValue(midnightNextDay);
 
             if (xPos >= area.left && xPos <= area.right && summary.calories != null) {

@@ -215,7 +215,6 @@ const summaryBubblePlugin = {
             midnightNextDay.setDate(midnightNextDay.getDate() + 1);
             const xPos = x.getPixelForValue(midnightNextDay);
 
-
             if (xPos >= area.left && xPos <= area.right && summary.calories != null) {
                 drawBubble(ctx, xPos, area.top + 22, dateStr, summary.calories);
             }
@@ -613,7 +612,7 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
-    const [heartRateData, workouts, sleepPhases ] = await Promise.all([
+    const [heartRateData, workouts, sleepPhases, dailySummary ] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
@@ -627,8 +626,6 @@ async function fetchHeartRateData() {
 
     const timeLabels = heartRateData.map(entry => entry.time);
     const heartRateValues = heartRateData.map(entry => entry.value);
-
-    const dailySummary = await fetchDailySummary(today);
     const { restingHR, calories } = dailySummary;
 
     window.fitdashOverlayData = {

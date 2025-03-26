@@ -630,6 +630,9 @@ function updateRateLimitStatus(headers) {
     const resetSeconds = parseInt(headers.get('fitbit-rate-limit-reset'), 10);
     const statusEl = document.getElementById('rateLimitStatus');
 
+    console.log('remaining rate: ' + remaining);
+    console.log('reset: ' + resetSeconds);
+
     if (remaining === '-1' && resetSeconds > 0) {
         const mins = Math.floor(resetSeconds / 60);
         const secs = resetSeconds % 60;

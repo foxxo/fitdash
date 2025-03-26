@@ -143,7 +143,7 @@ const summaryBubblePlugin = {
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
 
         const now = new Date();
-        const todayStr = date.toISOString().split('T')[0];
+        const todayStr = now.toISOString().split('T')[0];
 
 
         ctx.save();

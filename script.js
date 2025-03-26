@@ -28,7 +28,8 @@ async function fetchWorkoutSessions(date) {
     return data.activities.map(act => ({
         start: new Date(act.startTime),
         end: new Date(new Date(act.startTime).getTime() + act.duration),
-        activityName: act.activityName || ''
+        activityName: act.activityName || '',
+        calories: act.calories,
     }));
 }
 
@@ -52,11 +53,11 @@ const workoutEmojiPlugin = {
         ctx.font = '60px sans-serif';
         ctx.textBaseline = 'top';
 
-        workouts.forEach(({ start, activityName }) => {
+        workouts.forEach(({ start, activityName, calories }) => {
             const xPos = x.getPixelForValue(start);
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
-                ctx.fillText(emoji, xPos, area.bottom + 4);
+                ctx.fillText(emoji + "\n" + calories, xPos, area.bottom + 4);
             }
         });
 

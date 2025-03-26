@@ -602,7 +602,7 @@ async function fetchHeartRateData() {
     ]);
 
     if (heartRateData.length === 0) {
-        alert("No heart rate data available for today.");
+        alert("Failed to get today's data");
         return;
     }
 

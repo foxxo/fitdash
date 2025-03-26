@@ -2,30 +2,29 @@ const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
 
-let currentStartDate = new Date();  // Start with today
-currentStartDate.setHours(0, 0, 0, 0);  // Set to midnight for consistency
-const fitbitApiBaseUrl = `https://api.fitbit.com/1/user/-/activities/heart/date/`;
-const loadedDates = new Set();  // Track dates that have already been fetched
+let currentStartDate = new Date();
+currentStartDate.setHours(0, 0, 0, 0);
+
+const loadedDates = new Set();
 const loadedOverlayDates = new Set();
+
+function getLocalDateString(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
-    const formattedDate = date.toISOString().split('T')[0];
+    const formattedDate = getLocalDateString(date);
 
     const response = await fetch(`https://api.fitbit.com/1/user/-/activities/list.json?afterDate=${formattedDate}T00:00:00&sort=asc&limit=100&offset=0`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
     });
-
-    if (!response.ok) {
-        console.error('Error fetching workout data:', response.statusText);
-        return [];
-    }
+    if (!response.ok) return [];
 
     const data = await response.json();
-
-    // Return simplified array with start/end dates
     return data.activities.map(act => ({
         start: new Date(act.startTime),
         end: new Date(new Date(act.startTime).getTime() + act.duration)
@@ -34,22 +33,15 @@ async function fetchWorkoutSessions(date) {
 
 async function fetchSleepPhases(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
-    const formattedDate = date.toISOString().split('T')[0];
+    const formattedDate = getLocalDateString(date);
 
     const response = await fetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${formattedDate}.json`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
     });
-
-    if (!response.ok) {
-        console.error('Error fetching sleep data:', response.statusText);
-        return [];
-    }
+    if (!response.ok) return [];
 
     const data = await response.json();
     const sleepEntries = data.sleep || [];
-
     const phases = [];
 
     for (const session of sleepEntries) {
@@ -63,86 +55,52 @@ async function fetchSleepPhases(date) {
             }
         }
     }
-
     return phases;
 }
 
 async function fetchDailySummary(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
-    const formattedDate = date.toISOString().split('T')[0];
+    const formattedDate = getLocalDateString(date);
 
     const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d.json`, {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
     });
-
-    if (!response.ok) {
-        console.error('Error fetching HR summary:', response.statusText);
-        return { restingHR: null, calories: null };
-    }
+    if (!response.ok) return { restingHR: null, calories: null };
 
     const data = await response.json();
     const value = data['activities-heart']?.[0]?.value || {};
 
     const restingHR = value.restingHeartRate || null;
+    const calories = (value.heartRateZones || []).reduce((sum, zone) => sum + (zone.caloriesOut || 0), 0);
 
-    const calories = (value.heartRateZones || []).reduce((sum, zone) => {
-        return sum + (zone.caloriesOut || 0);
-    }, 0);
-
-    return {
-        restingHR,
-        calories: Math.round(calories)
-    };
+    return { restingHR, calories: Math.round(calories) };
 }
 
-
-
-// Fetch heart rate data for a given date
 async function fetchHeartRateDataForDate(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
-    const formattedDate = date.toISOString().split('T')[0];  // Format as YYYY-MM-DD
-
-    // Skip if this date has already been fetched
-    if (loadedDates.has(formattedDate)) {
-        console.log(`Data for ${formattedDate} already being fetched or loaded.`);
-        return [];
-    }
-
-    // Add date to prevent duplicate calls
+    const formattedDate = getLocalDateString(date);
+    if (loadedDates.has(formattedDate)) return [];
     loadedDates.add(formattedDate);
 
     try {
-        const response = await fetch(`${fitbitApiBaseUrl}${formattedDate}/1d/1min.json`, {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-            },
+        const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
         });
-
-        if (!response.ok) {
-            console.error(`Error fetching data for ${formattedDate}: ${response.statusText} (status ${response.status})`);
-            throw new Error('Failed to fetch Fitbit heart rate data');
-        }
+        if (!response.ok) throw new Error('Failed to fetch HR');
 
         const data = await response.json();
         return data["activities-heart-intraday"].dataset || [];
-
-    } catch (error) {
-        console.error(`Error fetching data for ${formattedDate}:`, error);
-        // Remove the date from the set so it can be retried if needed
+    } catch (err) {
         loadedDates.delete(formattedDate);
         return [];
     }
 }
 
 async function fetchOverlayDataForDate(date) {
-    const formattedDate = date.toISOString().split('T')[0];
-
+    const formattedDate = getLocalDateString(date);
     if (loadedOverlayDates.has(formattedDate)) return;
     loadedOverlayDates.add(formattedDate);
 
-    // Fetch all overlay-relevant data for the day
     const [workouts, sleepPhases, dailySummary] = await Promise.all([
         fetchWorkoutSessions(date),
         fetchSleepPhases(date),
@@ -150,40 +108,23 @@ async function fetchOverlayDataForDate(date) {
     ]);
 
     const { restingHR, calories } = dailySummary;
-
-    // Initialize overlay storage if missing
     if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
 
-    // Workouts and sleep phases — append to array
-    window.fitdashOverlayData.workouts = [
-        ...(window.fitdashOverlayData.workouts || []),
-        ...workouts
-    ];
-    window.fitdashOverlayData.sleepPhases = [
-        ...(window.fitdashOverlayData.sleepPhases || []),
-        ...sleepPhases
-    ];
-
-    // Resting HR per day
-    if (!window.fitdashOverlayData.restingHRByDate) {
-        window.fitdashOverlayData.restingHRByDate = {};
-    }
-    window.fitdashOverlayData.restingHRByDate[formattedDate] = restingHR;
-
-    // Daily summary (date, calories, etc.)
-    if (!window.fitdashOverlayData.dailySummaries) {
-        window.fitdashOverlayData.dailySummaries = {};
-    }
-    window.fitdashOverlayData.dailySummaries[formattedDate] = {
-        restingHR,
-        calories
+    window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
+    window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
+    window.fitdashOverlayData.restingHRByDate = {
+        ...(window.fitdashOverlayData.restingHRByDate || {}),
+        [formattedDate]: restingHR
+    };
+    window.fitdashOverlayData.dailySummaries = {
+        ...(window.fitdashOverlayData.dailySummaries || {}),
+        [formattedDate]: { restingHR, calories }
     };
 }
 
-
 // Function to add new data to the chart
 function addDataToChart(chart, newData, date) {
-    const formattedDate = date.toISOString().split('T')[0];
+    const formattedDate = getLocalDateString(date);
     const timeLabels = newData.map(entry => `${formattedDate}T${entry.time}`);
     const heartRateValues = newData.map(entry => entry.value);
 
@@ -551,8 +492,7 @@ function displayHeartRateChart(labels, data) {
 
                             return function (value, index) {
                                 const date = new Date(value);
-                                const dateStr = date.toDateString();
-
+                                date.toDateString();
                                 return date.toLocaleTimeString([], {
                                     hour: 'numeric',
                                     minute: '2-digit',
@@ -607,11 +547,9 @@ async function onPan({ chart }) {
     }
 }
 
-
 // Main function to fetch today's data and render the chart
 async function fetchHeartRateData() {
     const today = new Date();
-    console.log(today.toISOString())
 
     const [heartRateData, workouts, sleepPhases, dailySummary ] = await Promise.all([
         fetchHeartRateDataForDate(today),
@@ -652,12 +590,10 @@ window.onload = function () {
         const tokenMatch = hash.match(/access_token=([^&]*)/);
         if (tokenMatch) {
             localStorage.setItem('fitbit_access_token', tokenMatch[1]);
-            window.location.hash = '';  // Clean up URL
-            location.reload();  // Reload page with the new token
+            window.location.hash = '';
+            location.reload();
             return;
         }
     }
-
-    // Auto-fetch data on load
     fetchHeartRateData();
 };

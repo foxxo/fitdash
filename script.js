@@ -50,7 +50,7 @@ const workoutEmojiPlugin = {
 
         ctx.save();
         ctx.textAlign = 'center';
-        ctx.font = '60px sans-serif';
+        ctx.font = '40px sans-serif';
         ctx.textBaseline = 'top';
 
         workouts.forEach(({ start, activityName, calories }) => {

@@ -37,7 +37,7 @@ function getWorkoutEmoji(activityName) {
     const name = activityName.toLowerCase();
     if (name.includes("walk")) return "👟";
     if (name.includes("sport")) return "🤺";
-    if (name.includes("aerobic")) return "🕺️";
+    if (name.includes("aerobic")) return "🕺";
 
     return "💪";
 }
@@ -49,6 +49,7 @@ const workoutEmojiPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
+        ctx.fillStyle = '#000';
         ctx.textAlign = 'center';
         ctx.font = '40px sans-serif';
         ctx.textBaseline = 'top';
@@ -57,7 +58,13 @@ const workoutEmojiPlugin = {
             const xPos = x.getPixelForValue(start);
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
-                ctx.fillText(emoji + "\n" + calories, xPos, area.bottom + 4);
+                const emojiY = area.bottom + 4;
+                const textY = emojiY + 32; // Push second line down
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // Ensure full opacity
+                ctx.fillText(emoji, xPos, emojiY);
+                ctx.font = '12px sans-serif'; // Smaller for text
+                ctx.fillText(`${Math.round(calories)} cal`, xPos, textY);
             }
         });
 

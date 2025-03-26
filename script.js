@@ -143,7 +143,7 @@ const summaryBubblePlugin = {
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
 
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+        const todayStr = getLocalDateString(now);
 
 
         ctx.save();
@@ -440,7 +440,7 @@ function displayHeartRateChart(labels, data) {
                         const hr = ctx.p1.parsed.y;
                         const point = ctx.p1;
                         const time = new Date(point.parsed.x);
-                        const dateStr = time.toISOString().split('T')[0];
+                        const dateStr = getLocalDateString(time);
                         const restingHR = window.fitdashOverlayData?.restingHRByDate?.[dateStr] || 66;
                         return getHRGradientColor(hr, restingHR);
                     }
@@ -539,7 +539,7 @@ async function onPan({ chart }) {
             addDataToChart(chart, newData, newDate);
             currentStartDate = newDate;  // Update start date to include the new data
         } else {
-            console.log(`No data available for ${newDate.toISOString().split('T')[0]}.`);
+            console.log(`No data available for ${getLocalDateString(newDate)}.`);
         }
 
         // Force chart update immediately after data is added
@@ -570,9 +570,9 @@ async function fetchHeartRateData() {
     window.fitdashOverlayData = {
         workouts,
         sleepPhases,
-        restingHRByDate: { [today.toISOString().split('T')[0]]: restingHR },
+        restingHRByDate: { [getLocalDateString(today)]: restingHR },
         dailySummaries: {
-            [today.toISOString().split('T')[0]]: { restingHR, calories }
+            [getLocalDateString(today)]: { restingHR, calories }
         }
     };
 

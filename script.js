@@ -142,36 +142,43 @@ const summaryBubblePlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
 
-        const now = new Date();
-        const todayStr = getLocalDateString(now);
-
+        const summaryDates = Object.keys(summaries).sort(); // Ensure date order
 
         ctx.save();
         ctx.textAlign = 'center';
         ctx.font = 'bold 12px sans-serif';
         ctx.textBaseline = 'bottom';
 
-        for (const [dateStr, summary] of Object.entries(summaries)) {
-            const midnightNextDay = new Date(`${dateStr}T00:00:00`);
+        for (let i = 0; i < summaryDates.length - 1; i++) {
+            const dateStr = summaryDates[i]; // previous day
+            const nextDateStr = summaryDates[i + 1]; // midnight of the next day
 
-            const xPos = x.getPixelForValue(midnightNextDay);
+            const nextMidnight = new Date(`${nextDateStr}T00:00:00`);
+            const xPos = x.getPixelForValue(nextMidnight);
 
-            if (xPos >= area.left && xPos <= area.right && summary.calories != null) {
-                drawBubble(ctx, xPos, area.top + 22, dateStr, summary.calories);
+            const summary = summaries[dateStr];
+
+            if (xPos >= area.left && xPos <= area.right && summary?.calories != null) {
+                const labelDate = new Date(`${dateStr}T00:00:00`);
+                drawBubble(ctx, xPos, area.top + 22, labelDate, summary.calories);
             }
         }
 
-        // Draw current time marker and summary
-        const latestX = x.getPixelForValue(now);
+        // "Now" bubble
+        const now = new Date();
+        const todayStr = getLocalDateString(now);
         const todaySummary = summaries[todayStr];
+        const latestX = x.getPixelForValue(now);
 
         if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
-            drawBubble(ctx, latestX, area.top + 22, todayStr, todaySummary.calories, true);
+            const labelDate = new Date(`${todayStr}T00:00:00`);
+            drawBubble(ctx, latestX, area.top + 22, labelDate, todaySummary.calories, true);
         }
 
         ctx.restore();
     }
 };
+
 function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const date = new Date(dateStr);
     const label = date.toLocaleDateString('en-US', {

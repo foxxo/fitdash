@@ -27,9 +27,43 @@ async function fetchWorkoutSessions(date) {
     const data = await response.json();
     return data.activities.map(act => ({
         start: new Date(act.startTime),
-        end: new Date(new Date(act.startTime).getTime() + act.duration)
+        end: new Date(new Date(act.startTime).getTime() + act.duration),
+        activityName: act.activityName || ''
     }));
 }
+
+function getWorkoutEmoji(activityName) {
+    const name = activityName.toLowerCase();
+    if (name.includes("walk")) return "👟";
+    if (name.includes("sport")) return "🤺";
+    if (name.includes("aerobic")) return "🕺️";
+
+    return "💪";
+}
+
+const workoutEmojiPlugin = {
+    id: 'workoutEmojiPlugin',
+    afterDatasetsDraw(chart) {
+        const workouts = window.fitdashOverlayData?.workouts || [];
+        const { ctx, chartArea: area, scales: { x } } = chart;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = '60px sans-serif';
+        ctx.textBaseline = 'top';
+
+        workouts.forEach(({ start, activityName }) => {
+            const xPos = x.getPixelForValue(start);
+            if (xPos >= area.left && xPos <= area.right) {
+                const emoji = getWorkoutEmoji(activityName);
+                ctx.fillText(emoji, xPos, area.bottom + 4);
+            }
+        });
+
+        ctx.restore();
+    }
+};
+
 
 async function fetchSleepPhases(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
@@ -426,7 +460,8 @@ function displayHeartRateChart(labels, data) {
         sleepOverlayPlugin,
         restingHrPlugin,
         midnightMarkerPlugin,
-        summaryBubblePlugin
+        summaryBubblePlugin,
+        workoutEmojiPlugin
     );
 
     new Chart(ctx, {

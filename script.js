@@ -60,7 +60,7 @@ const workoutEmojiPlugin = {
                 const emojiY = area.bottom + 4;
                 const textY = emojiY + 32; // Push second line down
 
-                ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // Ensure full opacity
+                ctx.fillStyle = 'rgb(255,255,255)'; // Ensure full opacity
                 ctx.font = '32px sans-serif';
                 ctx.fillText(emoji, xPos, emojiY);
                 ctx.font = '12px sans-serif'; // Smaller for text
@@ -324,7 +324,7 @@ const restingHrPlugin = {
 
             const hrY = y.getPixelForValue(hr);
             ctx.save();
-            ctx.strokeStyle = 'rgba(0,0,255,0.88)';
+            ctx.strokeStyle = 'rgba(42,42,255,0.88)';
             ctx.setLineDash([4, 4]);
 
             // Draw line only if visible
@@ -360,8 +360,8 @@ const midnightMarkerPlugin = {
 
         ctx.save();
         ctx.setLineDash([3, 4]);
-        ctx.strokeStyle = 'rgba(100, 100, 255, 0.5)';
-        ctx.fillStyle = 'rgba(100, 100, 255, 0.9)';
+        ctx.strokeStyle = 'rgba(146,146,255,0.78)';
+        ctx.fillStyle = 'rgba(103,220,255,0.9)';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';

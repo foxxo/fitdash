@@ -499,8 +499,8 @@ function displayHeartRateChart(labels, data) {
 
                             return lines;
                         }
-                    }
-                }
+                    },
+                },
                 zoom: {
                     pan: {
                         enabled: true,

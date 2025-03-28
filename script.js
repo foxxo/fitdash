@@ -476,6 +476,31 @@ function displayHeartRateChart(labels, data) {
                 intersect: false,
             },
             plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            const hr = context.parsed.y;
+                            const time = new Date(context.parsed.x);
+                            const dateStr = getLocalDateString(time);
+
+                            // RHR for the day
+                            const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateStr];
+
+                            // Sleep phase at this time
+                            const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
+                            const sleep = sleepPhases.find(phase =>
+                                time >= phase.start && time <= phase.end
+                            );
+
+                            const lines = [`❤️ ${hr} BPM`];
+
+                            if (rhr) lines.push(`RHR: ${rhr} BPM`);
+                            if (sleep) lines.push(`💤 Sleep: ${sleep.stage}`);
+
+                            return lines;
+                        }
+                    }
+                }
                 zoom: {
                     pan: {
                         enabled: true,

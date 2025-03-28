@@ -507,7 +507,11 @@ function displayHeartRateChart(labels, data) {
                         },
                         tooltipFormat: 'MMMM d, h:mm a',  // Full date and time in tooltip
                     },
+                    grid: {
+                        color: 'rgba(255,255,255,0.1)',
+                    },
                     ticks: {
+                        color: '#ccc',
                         autoSkip: true,
                         maxTicksLimit: 10,
                         callback: (function () {

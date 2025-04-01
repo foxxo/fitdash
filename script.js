@@ -265,6 +265,8 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
 
     // Bubble text
     ctx.fillStyle = '#333';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
     lines.forEach((line, index) => {
         ctx.fillText(line, x, top + padding + index * lineHeight);
     });

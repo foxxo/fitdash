@@ -240,13 +240,13 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const text = `${label}\n${calText}\nRHR - ${rhr}`;
     const lines = text.split('\n');
     const padding = 6;
-    const width = ctx.measureText(text).width + padding * 2;
-    const height = 24;
+    const lineHeight = 16;
+    const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2;
+    const height = lineHeight * lines.length + padding * 2;
 
     const radius = 6;
     const left = x - width / 2;
     const top = y;
-    const lineHeight = 16;
 
     // Bubble background
     ctx.fillStyle = highlight ? 'rgba(255, 255, 200, 0.9)' : 'rgba(230, 240, 255, 0.85)';

@@ -233,7 +233,10 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     });
     const calText = `${calories.toLocaleString()} cal`;
 
-    const text = `${label} – ${calText}`;
+    // RHR for the day
+    const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateStr];
+
+    const text = `${label} – ${calText}\nRHR - ${rhr}`;
     const padding = 6;
     const width = ctx.measureText(text).width + padding * 2;
     const height = 24;
@@ -481,10 +484,6 @@ function displayHeartRateChart(labels, data) {
                         label: function (context) {
                             const hr = context.parsed.y;
                             const time = new Date(context.parsed.x);
-                            const dateStr = getLocalDateString(time);
-
-                            // RHR for the day
-                            const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateStr];
 
                             // Sleep phase at this time
                             const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
@@ -494,7 +493,6 @@ function displayHeartRateChart(labels, data) {
 
                             const lines = [`❤️ ${hr} BPM`];
 
-                            if (rhr) lines.push(`RHR: ${rhr} BPM`);
                             if (sleep) lines.push(`💤 Sleep: ${sleep.stage}`);
 
                             return lines;

@@ -237,7 +237,8 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
 
-    const text = `${label} – ${calText}\nRHR - ${rhr}`;
+    const text = `${label}\n${calText}\nRHR - ${rhr}`;
+    const lines = text.split('\n');
     const padding = 6;
     const width = ctx.measureText(text).width + padding * 2;
     const height = 24;
@@ -245,6 +246,7 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const radius = 6;
     const left = x - width / 2;
     const top = y;
+    const lineHeight = 16;
 
     // Bubble background
     ctx.fillStyle = highlight ? 'rgba(255, 255, 200, 0.9)' : 'rgba(230, 240, 255, 0.85)';
@@ -263,7 +265,9 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
 
     // Bubble text
     ctx.fillStyle = '#333';
-    ctx.fillText(text, x, y + height / 2 + 4);
+    lines.forEach((line, index) => {
+        ctx.fillText(line, x, top + padding + index * lineHeight);
+    });
 }
 
 const workoutOverlayPlugin = {

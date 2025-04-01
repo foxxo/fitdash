@@ -234,7 +234,8 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const calText = `${calories.toLocaleString()} cal`;
 
     // RHR for the day
-    const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateStr];
+    const dateKey = getLocalDateString(new Date(dateStr));
+    const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
 
     const text = `${label} – ${calText}\nRHR - ${rhr}`;
     const padding = 6;

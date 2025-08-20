@@ -1,12 +1,19 @@
 const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
+const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+
 
 let currentStartDate = new Date();
 currentStartDate.setHours(0, 0, 0, 0);
 
 const loadedDates = new Set();
 const loadedOverlayDates = new Set();
+
+function fitbitFetch(endpoint, options = {}) {
+    const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+    return fetch(CORS_PROXY + endpoint, options);
+}
 
 function getLocalDateString(date) {
     const year = date.getFullYear();
@@ -19,7 +26,7 @@ async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
 
-    const response = await fetch(`https://api.fitbit.com/1/user/-/activities/list.json?afterDate=${formattedDate}T00:00:00&sort=asc&limit=100&offset=0`, {
+    const response = await fitbitFetch(`https://api.fitbit.com/1/user/-/activities/list.json?afterDate=${formattedDate}T00:00:00&sort=asc&limit=100&offset=0`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
@@ -77,7 +84,7 @@ async function fetchSleepPhases(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
 
-    const response = await fetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${formattedDate}.json`, {
+    const response = await fitbitFetch(`https://api.fitbit.com/1.2/user/-/sleep/date/${formattedDate}.json`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
@@ -105,7 +112,7 @@ async function fetchDailySummary(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
 
-    const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d.json`, {
+    const response = await fitbitFetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d.json`, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
@@ -127,7 +134,7 @@ async function fetchHeartRateDataForDate(date) {
     loadedDates.add(formattedDate);
 
     try {
-        const response = await fetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`, {
+        const response = await fitbitFetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
 
@@ -671,7 +678,7 @@ async function initApp() {
 }
 
 async function testToken(token) {
-    const res = await fetch('https://api.fitbit.com/1/user/-/profile.json', {
+    const res = await fitbitFetch('https://api.fitbit.com/1/user/-/profile.json', {
         headers: { Authorization: `Bearer ${token}` }
     });
 

@@ -1,0 +1,11 @@
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# provide a tiny publish dir so deploy succeeds (we're not moving hosting)
+[build]
+  publish = "public"
+
+# Optional: lock Node version
+[functions."*"]
+  node_version = "18"

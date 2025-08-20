@@ -1,7 +1,30 @@
 const CLIENT_ID = '23PXJV';
 const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
-const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+const NETLIFY_BASE = "https://fitdashproxy.netlify.app/.netlify/functions/fitbit-proxy";
+
+// Proxy-aware fetch: sends your Fitbit request through the Netlify function
+async function fitbitFetch(targetUrl, init = {}) {
+    const method = init.method || 'GET';
+    const token = localStorage.getItem('fitbit_access_token');
+
+    // Merge headers; default the Authorization header from localStorage if missing
+    const mergedHeaders = {
+        ...(init.headers || {}),
+        Authorization: (init.headers && init.headers.Authorization) || `Bearer ${token}`,
+    };
+
+    // For simple GETs we don’t need a body
+    const hasBody = method !== 'GET' && init.body != null;
+
+    // Call the Netlify function. It reads the Authorization header you send
+    // and forwards it to Fitbit, avoiding browser CORS issues.
+    return fetch(`${NETLIFY_BASE}?url=${encodeURIComponent(targetUrl)}`, {
+        method,
+        headers: mergedHeaders,
+        body: hasBody ? init.body : undefined,
+    });
+}
 
 
 let currentStartDate = new Date();
@@ -9,10 +32,6 @@ currentStartDate.setHours(0, 0, 0, 0);
 
 const loadedDates = new Set();
 const loadedOverlayDates = new Set();
-
-function fitbitFetch(endpoint, options = {}) {
-    return fetch(CORS_PROXY + endpoint, options);
-}
 
 function getLocalDateString(date) {
     const year = date.getFullYear();

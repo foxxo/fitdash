@@ -665,47 +665,80 @@ document.getElementById('heartrateChart').addEventListener('mousedown', (event) 
     event.preventDefault();  // Prevent browser from selecting or dragging the chart element
 });
 
-async function initApp() {
-    const hash = window.location.hash;
-    if (hash.includes('access_token=')) {
-        const tokenMatch = hash.match(/access_token=([^&]*)/);
-        if (tokenMatch) {
-            const token = tokenMatch[1];
-            localStorage.setItem('fitbit_access_token', token);
-            window.location.hash = '';
-        }
-    }
+function getHashParam(name) {
+    const m = window.location.hash.match(new RegExp(`${name}=([^&]*)`));
+    return m ? decodeURIComponent(m[1]) : null;
+}
 
-    const token = localStorage.getItem('fitbit_access_token');
-    if (!token) {
-        // No token, force reauth
-        window.location = AUTH_URL;
-        return;
-    }
-
-    // Optionally test token with a cheap call
-    const valid = await testToken(token);
-    if (!valid) {
-        localStorage.removeItem('fitbit_access_token');
-        window.location = AUTH_URL;
-        return;
-    }
-
-    // All good, fetch the data
-    fetchHeartRateData();
+function safeRedirectToAuth() {
+    // prevent loops
+    localStorage.setItem('auth_in_progress', '1');
+    window.location.href = AUTH_URL;
 }
 
 async function testToken(token) {
-    const res = await fitbitFetch('https://api.fitbit.com/1/user/-/profile.json', {
-        headers: { Authorization: `Bearer ${token}` }
-    });
-
-    return res.ok;
+    try {
+        const res = await fitbitFetch('https://api.fitbit.com/1/user/-/profile.json', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.status === 401) return false;   // definitely invalid
+        if (!res.ok) {
+            // transient error (proxy hiccup, 5xx, etc.) -> don't invalidate token
+            console.warn('testToken non-OK:', res.status);
+            return true;
+        }
+        return true;
+    } catch (e) {
+        console.warn('testToken error (treat as transient):', e);
+        return true;
+    }
 }
 
+async function initApp() {
+    // 1) Handle callback (hash) first
+    const accessFromHash = getHashParam('access_token');
+    if (accessFromHash) {
+        localStorage.setItem('fitbit_access_token', accessFromHash);
+        localStorage.removeItem('auth_in_progress');
+        // Strip hash without reloading to avoid double-runs
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+
+    const token = localStorage.getItem('fitbit_access_token');
+
+    // 2) If no token…
+    if (!token) {
+        // If we just came from Fitbit and still no token, stop ping-ponging
+        const cameFromFitbit = document.referrer && document.referrer.includes('fitbit.com');
+        const alreadyAuthing = localStorage.getItem('auth_in_progress') === '1';
+
+        if (cameFromFitbit || alreadyAuthing) {
+            console.error('Auth failed or cancelled. Not redirecting again.');
+            // (Optional) show a UI to retry auth
+            return;
+        }
+
+        // Start one controlled auth attempt
+        safeRedirectToAuth();
+        return;
+    }
+
+    // 3) Validate token (but be forgiving on transient failures)
+    const valid = await testToken(token);
+    if (!valid) {
+        // Only clear on confirmed 401 invalid token
+        localStorage.removeItem('fitbit_access_token');
+        safeRedirectToAuth();
+        return;
+    }
+
+    // 4) Ready
+    fetchHeartRateData();
+}
 window.onload = initApp;
 
 document.getElementById('reauthBtn').addEventListener('click', () => {
     localStorage.removeItem('fitbit_access_token');
-    window.location = AUTH_URL;
+    localStorage.removeItem('auth_in_progress');
+    safeRedirectToAuth();
 });

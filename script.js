@@ -681,5 +681,6 @@ async function testToken(token) {
 window.onload = initApp;
 
 document.getElementById('reauthBtn').addEventListener('click', () => {
+    localStorage.removeItem('fitbit_access_token');
     window.location = AUTH_URL;
 });

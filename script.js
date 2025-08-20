@@ -3,28 +3,35 @@ const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
 const NETLIFY_BASE = "https://fitdashproxy.netlify.app/.netlify/functions/fitbit-proxy";
 
-// Proxy-aware fetch: sends your Fitbit request through the Netlify function
 async function fitbitFetch(targetUrl, init = {}) {
-    const method = init.method || 'GET';
+    // prefer header passed in, otherwise attach stored token
     const token = localStorage.getItem('fitbit_access_token');
+    const authHeader =
+        (init.headers && (init.headers.Authorization || init.headers.authorization)) ||
+        (token ? `Bearer ${token}` : undefined);
 
-    // Merge headers; default the Authorization header from localStorage if missing
-    const mergedHeaders = {
-        ...(init.headers || {}),
-        Authorization: (init.headers && init.headers.Authorization) || `Bearer ${token}`,
+    const payload = {
+        url: targetUrl,
+        method: init.method || 'GET',
+        headers: authHeader ? { Authorization: authHeader } : {},
+        // NOTE: If you ever need to proxy a POST with a body to Fitbit, add: body: init.body
     };
 
-    // For simple GETs we don’t need a body
-    const hasBody = method !== 'GET' && init.body != null;
-
-    // Call the Netlify function. It reads the Authorization header you send
-    // and forwards it to Fitbit, avoiding browser CORS issues.
-    return fetch(`${NETLIFY_BASE}?url=${encodeURIComponent(targetUrl)}`, {
-        method,
-        headers: mergedHeaders,
-        body: hasBody ? init.body : undefined,
+    const res = await fetch(NETLIFY_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
     });
+
+    // Forward non-2xx for easier debugging
+    if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.warn('fitbitFetch proxy error', res.status, txt);
+    }
+    return res;
 }
+
 
 
 let currentStartDate = new Date();

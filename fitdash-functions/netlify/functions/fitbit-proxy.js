@@ -5,60 +5,69 @@ const CORS_HEADERS = {
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
-exports.handler = async (event) => {
-    // Preflight
+// netlify/functions/fitbit-proxy.js
+export async function handler(event) {
+    // CORS for your GitHub Pages origin
+    const allowedOrigin = 'https://foxxo.github.io';
+
     if (event.httpMethod === 'OPTIONS') {
-        return { statusCode: 204, headers: CORS_HEADERS, body: '' };
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': allowedOrigin,
+                'Access-Control-Allow-Headers': 'content-type',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Max-Age': '86400',
+            },
+        };
+    }
+
+    if (event.httpMethod !== 'POST') {
+        return {
+            statusCode: 400,
+            headers: { 'Access-Control-Allow-Origin': allowedOrigin },
+            body: 'Use POST with JSON: { url, method, headers, body? }',
+        };
     }
 
     try {
-        // Require an Authorization header from the browser
-        const auth = event.headers.authorization || event.headers.Authorization || '';
-        if (!auth.startsWith('Bearer ')) {
-            return {
-                statusCode: 401,
-                headers: CORS_HEADERS,
-                body: JSON.stringify({ error: 'Missing or invalid Authorization header' }),
-            };
-        }
-
-        // Only allow whitelisted Fitbit endpoints via a "path" query param
-        // Example: /1/user/-/activities/heart/date/2025-03-25/1d/1min.json
-        const qs = event.queryStringParameters || {};
-        const path = qs.path || '';
-        if (!path || !/^\/1(\.|\/)/.test(path)) {
+        const { url, method = 'GET', headers = {}, body } = JSON.parse(event.body || '{}');
+        if (!url) {
             return {
                 statusCode: 400,
-                headers: CORS_HEADERS,
-                body: JSON.stringify({ error: 'Invalid or missing Fitbit API path' }),
+                headers: { 'Access-Control-Allow-Origin': allowedOrigin },
+                body: 'Missing "url"',
             };
         }
 
-        // Optional: forward querystring for Fitbit endpoints (?afterDate=..., etc.)
-        // Accept pass-through params in "forward" (URL-encoded "k=v&k2=v2")
-        const forward = qs.forward ? `?${qs.forward}` : '';
+        // Only forward safe headers (Authorization)
+        const fwdHeaders = {};
+        if (headers.Authorization || headers.authorization) {
+            fwdHeaders.Authorization = headers.Authorization || headers.authorization;
+        }
 
-        const url = `https://api.fitbit.com${path}${forward}`;
-
-        const resp = await fetch(url, {
-            method: 'GET',
-            headers: { Authorization: auth },
+        const upstream = await fetch(url, {
+            method,
+            headers: fwdHeaders,
+            body: body ?? undefined,
         });
 
-        const text = await resp.text(); // pipe body as-is
+        const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+        const text = await upstream.text();
+
         return {
-            statusCode: resp.status,
+            statusCode: upstream.status,
             headers: {
-                ...CORS_HEADERS,
-                'Content-Type': resp.headers.get('content-type') || 'application/json',
+                'Access-Control-Allow-Origin': allowedOrigin,
+                'content-type': contentType,
             },
             body: text,
         };
     } catch (err) {
         return {
             statusCode: 500,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({ error: 'Proxy error', details: String(err) }),
+            headers: { 'Access-Control-Allow-Origin': allowedOrigin },
+            body: `Proxy error: ${err.message}`,
         };
     }
-};
+}

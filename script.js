@@ -640,19 +640,45 @@ document.getElementById('heartrateChart').addEventListener('mousedown', (event) 
     event.preventDefault();  // Prevent browser from selecting or dragging the chart element
 });
 
-window.onload = function () {
+async function initApp() {
     const hash = window.location.hash;
-    if (hash) {
+    if (hash.includes('access_token=')) {
         const tokenMatch = hash.match(/access_token=([^&]*)/);
         if (tokenMatch) {
-            localStorage.setItem('fitbit_access_token', tokenMatch[1]);
+            const token = tokenMatch[1];
+            localStorage.setItem('fitbit_access_token', token);
             window.location.hash = '';
-            location.reload();
-            return;
         }
     }
+
+    const token = localStorage.getItem('fitbit_access_token');
+    if (!token) {
+        // No token, force reauth
+        window.location = AUTH_URL;
+        return;
+    }
+
+    // Optionally test token with a cheap call
+    const valid = await testToken(token);
+    if (!valid) {
+        localStorage.removeItem('fitbit_access_token');
+        window.location = AUTH_URL;
+        return;
+    }
+
+    // All good, fetch the data
     fetchHeartRateData();
-};
+}
+
+async function testToken(token) {
+    const res = await fetch('https://api.fitbit.com/1/user/-/profile.json', {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return res.ok;
+}
+
+window.onload = initApp;
 
 document.getElementById('reauthBtn').addEventListener('click', () => {
     window.location = AUTH_URL;

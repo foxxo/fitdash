@@ -11,7 +11,6 @@ const loadedDates = new Set();
 const loadedOverlayDates = new Set();
 
 function fitbitFetch(endpoint, options = {}) {
-    const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
     return fetch(CORS_PROXY + endpoint, options);
 }
 

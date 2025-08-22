@@ -305,7 +305,7 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
     const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
-    const hrvText = (hrv?.dailyRmssd != null) ? `\nHRV - ${Math.round(hrv.dailyRmssd)}\n / ${Math.round(hrv.deepRmssd)}` : null;
+    const hrvText = (hrv?.dailyRmssd != null) ? `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}` : null;
 
 
 

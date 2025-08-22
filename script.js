@@ -305,7 +305,7 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
     const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
-    const hrvText = (hrv?.dailyRmssd != null) ? `HRV rMSSD: ${Math.round(hrv.dailyRmssd)}` : null;
+    const hrvText = (hrv?.dailyRmssd != null) ? `Headline HRV : ${Math.round(hrv.dailyRmssd)}\nDeep HRV : ${Math.round(hrv.deepRmssd)}` : null;
 
 
 
@@ -408,7 +408,7 @@ const restingHrPlugin = {
 
             const hrY = y.getPixelForValue(hr);
             ctx.save();
-            ctx.strokeStyle = 'rgba(42,42,255,0.88)';
+            ctx.strokeStyle = 'rgba(0,255,224,0.88)';
             ctx.setLineDash([4, 4]);
 
             // Draw line only if visible

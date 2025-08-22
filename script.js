@@ -66,6 +66,37 @@ async function fetchWorkoutSessions(date) {
     }));
 }
 
+async function fetchHRVSummary(date) {
+    const accessToken = localStorage.getItem('fitbit_access_token');
+    const d = getLocalDateString(date);
+
+    // First try the 1d form
+    let res = await fitbitFetch(`https://api.fitbit.com/1/user/-/hrv/date/${d}/1d.json`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    // Fallback to the plain date form if needed
+    if (!res.ok) {
+        res = await fitbitFetch(`https://api.fitbit.com/1/user/-/hrv/date/${d}.json`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+    }
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    // The shape typically looks like:
+    // { "hrv": [ { "dateTime": "YYYY-MM-DD", "value": { "dailyRmssd": 34, "deepRmssd": 42 } } ] }
+    const item = (data.hrv && data.hrv[0]) || null;
+    const value = item?.value || {};
+    return {
+        date: d,
+        dailyRmssd: value.dailyRmssd ?? null,
+        deepRmssd: value.deepRmssd ?? null,
+    };
+}
+
+
 function getWorkoutEmoji(activityName) {
     const name = activityName.toLowerCase();
     if (name.includes("walk")) return "👟";
@@ -178,10 +209,11 @@ async function fetchOverlayDataForDate(date) {
     if (loadedOverlayDates.has(formattedDate)) return;
     loadedOverlayDates.add(formattedDate);
 
-    const [workouts, sleepPhases, dailySummary] = await Promise.all([
+    const [workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
         fetchWorkoutSessions(date),
         fetchSleepPhases(date),
-        fetchDailySummary(date)
+        fetchDailySummary(date),
+        fetchHRVSummary(date)
     ]);
 
     const { restingHR, calories } = dailySummary;
@@ -196,6 +228,10 @@ async function fetchOverlayDataForDate(date) {
     window.fitdashOverlayData.dailySummaries = {
         ...(window.fitdashOverlayData.dailySummaries || {}),
         [formattedDate]: { restingHR, calories }
+    };
+    window.fitdashOverlayData.hrvByDate = {
+        ...(window.fitdashOverlayData.hrvByDate || {}),
+        [formattedDate]: hrv // { dailyRmssd, deepRmssd } or null
     };
 }
 
@@ -268,9 +304,15 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     // RHR for the day
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
+    const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
+    const hrvText = (hrv?.dailyRmssd != null) ? `HRV rMSSD: ${Math.round(hrv.dailyRmssd)}` : null;
+
+
+
 
     const text = `${label}\n${calText}\nRHR - ${rhr}`;
     const lines = text.split('\n');
+    if (hrvText) lines.push(hrvText);
     const padding = 6;
     const lineHeight = 16;
     const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2;
@@ -639,11 +681,12 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
-    const [heartRateData, workouts, sleepPhases, dailySummary ] = await Promise.all([
+    const [heartRateData, workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
-        fetchDailySummary(today)
+        fetchDailySummary(today),
+        fetchHRVSummary(today)
     ]);
 
     if (heartRateData.length === 0) {
@@ -662,6 +705,10 @@ async function fetchHeartRateData() {
         dailySummaries: {
             [getLocalDateString(today)]: { restingHR, calories }
         }
+    };
+    window.fitdashOverlayData.hrvByDate = {
+        ...(window.fitdashOverlayData.hrvByDate || {}),
+        [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
     };
 
     displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart

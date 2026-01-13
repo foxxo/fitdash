@@ -39,8 +39,6 @@ currentStartDate.setHours(0, 0, 0, 0);
 
 const loadedDates = new Set();
 const loadedOverlayDates = new Set();
-const loadingDates = new Set(); // Track in-progress loads
-const loadingOverlayDates = new Set(); // Track in-progress overlay loads
 
 function getLocalDateString(date) {
     const year = date.getFullYear();
@@ -188,12 +186,8 @@ async function fetchDailySummary(date) {
 async function fetchHeartRateDataForDate(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
-
-    if (loadedDates.has(formattedDate) || loadingDates.has(formattedDate)) {
-        return [];
-    }
-
-    loadingDates.add(formattedDate);
+    if (loadedDates.has(formattedDate)) return [];
+    loadedDates.add(formattedDate);
 
     try {
         const response = await fitbitFetch(`https://api.fitbit.com/1/user/-/activities/heart/date/${formattedDate}/1d/1min.json`, {
@@ -203,255 +197,376 @@ async function fetchHeartRateDataForDate(date) {
         if (!response.ok) throw new Error('Failed to fetch HR');
 
         const data = await response.json();
-        loadedDates.add(formattedDate);
         return data["activities-heart-intraday"].dataset || [];
     } catch (err) {
-        console.error(`Error loading HR data for ${formattedDate}:`, err);
+        loadedDates.delete(formattedDate);
         return [];
-    } finally {
-        loadingDates.delete(formattedDate);
     }
 }
 
 async function fetchOverlayDataForDate(date) {
     const formattedDate = getLocalDateString(date);
+    if (loadedOverlayDates.has(formattedDate)) return;
+    loadedOverlayDates.add(formattedDate);
 
-    if (loadedOverlayDates.has(formattedDate) || loadingOverlayDates.has(formattedDate)) {
-        return;
-    }
+    const [workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
+        fetchWorkoutSessions(date),
+        fetchSleepPhases(date),
+        fetchDailySummary(date),
+        fetchHRVSummary(date)
+    ]);
 
-    loadingOverlayDates.add(formattedDate);
+    const { restingHR, calories } = dailySummary;
+    if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
 
-    try {
-        const [workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
-            fetchWorkoutSessions(date),
-            fetchSleepPhases(date),
-            fetchDailySummary(date),
-            fetchHRVSummary(date)
-        ]);
-
-        const { restingHR, calories } = dailySummary;
-        if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
-
-        window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
-        window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
-        window.fitdashOverlayData.restingHRByDate = {
-            ...(window.fitdashOverlayData.restingHRByDate || {}),
-            [formattedDate]: restingHR
-        };
-        window.fitdashOverlayData.dailySummaries = {
-            ...(window.fitdashOverlayData.dailySummaries || {}),
-            [formattedDate]: { restingHR, calories }
-        };
-        window.fitdashOverlayData.hrvByDate = {
-            ...(window.fitdashOverlayData.hrvByDate || {}),
-            [formattedDate]: hrv
-        };
-
-        loadedOverlayDates.add(formattedDate);
-    } catch (err) {
-        console.error(`Error loading overlay data for ${formattedDate}:`, err);
-    } finally {
-        loadingOverlayDates.delete(formattedDate);
-    }
+    window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
+    window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
+    window.fitdashOverlayData.restingHRByDate = {
+        ...(window.fitdashOverlayData.restingHRByDate || {}),
+        [formattedDate]: restingHR
+    };
+    window.fitdashOverlayData.dailySummaries = {
+        ...(window.fitdashOverlayData.dailySummaries || {}),
+        [formattedDate]: { restingHR, calories }
+    };
+    window.fitdashOverlayData.hrvByDate = {
+        ...(window.fitdashOverlayData.hrvByDate || {}),
+        [formattedDate]: hrv // { dailyRmssd, deepRmssd } or null
+    };
 }
 
-function addDataToChart(chart, rawData, targetDate) {
-    if (rawData.length === 0) return;
+// Function to add new data to the chart
+function addDataToChart(chart, newData, date) {
+    const formattedDate = getLocalDateString(date);
+    const timeLabels = newData.map(entry => `${formattedDate}T${entry.time}`);
+    const heartRateValues = newData.map(entry => entry.value);
 
-    const dateString = getLocalDateString(targetDate);
-    const formattedData = rawData.map(entry => ({
-        x: new Date(`${dateString}T${entry.time}`),
-        y: entry.value
-    }));
+    // Convert times to Date objects and prepend to chart data
+    const fullDateLabels = timeLabels.map(time => new Date(time));
+    chart.data.labels.unshift(...fullDateLabels);
+    chart.data.datasets[0].data.unshift(...heartRateValues);
 
-    chart.data.datasets[0].data = [...formattedData, ...chart.data.datasets[0].data];
-    chart.data.datasets[0].data.sort((a, b) => a.x - b.x);
+    chart.update();
 }
 
-const sleepPhasePlugin = {
-    id: 'sleepPhasePlugin',
+const summaryBubblePlugin = {
+    id: 'summaryBubblePlugin',
     beforeDatasetsDraw(chart) {
-        const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
-        const { ctx, chartArea: area, scales: { x, y } } = chart;
+        const { ctx, chartArea: area, scales: { x } } = chart;
+        const summaries = window.fitdashOverlayData?.dailySummaries || {};
+
+        const summaryDates = Object.keys(summaries).sort(); // Ensure date order
 
         ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textBaseline = 'bottom';
 
-        sleepPhases.forEach(phase => {
-            const start = x.getPixelForValue(phase.start);
-            const end = x.getPixelForValue(phase.end);
+        for (let i = 0; i < summaryDates.length - 1; i++) {
+            const dateStr = summaryDates[i]; // previous day
+            const nextDateStr = summaryDates[i + 1]; // midnight of the next day
 
-            if (start <= area.right && end >= area.left) {
-                let color;
-                switch (phase.stage) {
-                    case 'deep': color = 'rgba(0, 0, 139, 0.2)'; break;
-                    case 'light': color = 'rgba(135, 206, 250, 0.2)'; break;
-                    case 'rem': color = 'rgba(148, 0, 211, 0.2)'; break;
-                    case 'wake': color = 'rgba(255, 255, 0, 0.2)'; break;
-                    default: color = 'rgba(200, 200, 200, 0.1)';
-                }
+            const nextMidnight = new Date(`${nextDateStr}T00:00:00`);
+            const xPos = x.getPixelForValue(nextMidnight);
 
-                ctx.fillStyle = color;
-                ctx.fillRect(
-                    Math.max(start, area.left),
-                    area.top,
-                    Math.min(end, area.right) - Math.max(start, area.left),
-                    area.bottom - area.top
-                );
+            const summary = summaries[dateStr];
+
+            if (xPos >= area.left && xPos <= area.right && summary?.calories != null) {
+                const labelDate = new Date(`${dateStr}T00:00:00`);
+                drawBubble(ctx, xPos, area.top + 22, labelDate, summary.calories);
             }
-        });
-
-        ctx.restore();
-    }
-};
-
-const restingHRLinePlugin = {
-    id: 'restingHRLinePlugin',
-    afterDatasetsDraw(chart) {
-        if (!window.fitdashOverlayData?.restingHRByDate) return;
-
-        const { ctx, chartArea: area, scales: { x, y } } = chart;
-        ctx.save();
-
-        const minDate = new Date(x.min);
-        const maxDate = new Date(x.max);
-        const startDate = new Date(minDate);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(maxDate);
-        endDate.setHours(23, 59, 59, 999);
-
-        const segments = [];
-        let currentDate = new Date(startDate);
-
-        while (currentDate <= endDate) {
-            const dateStr = getLocalDateString(currentDate);
-            const rhr = window.fitdashOverlayData.restingHRByDate[dateStr];
-
-            if (rhr != null) {
-                const segmentStart = new Date(currentDate);
-                segmentStart.setHours(0, 0, 0, 0);
-                const segmentEnd = new Date(currentDate);
-                segmentEnd.setHours(23, 59, 59, 999);
-
-                segments.push({
-                    start: Math.max(segmentStart.getTime(), minDate.getTime()),
-                    end: Math.min(segmentEnd.getTime(), maxDate.getTime()),
-                    rhr
-                });
-            }
-
-            currentDate.setDate(currentDate.getDate() + 1);
         }
 
-        segments.forEach(seg => {
-            const xStart = x.getPixelForValue(seg.start);
-            const xEnd = x.getPixelForValue(seg.end);
-            const yVal = y.getPixelForValue(seg.rhr);
+        // "Now" bubble
+        const now = new Date();
+        const todayStr = getLocalDateString(now);
+        const todaySummary = summaries[todayStr];
+        const latestX = x.getPixelForValue(now);
 
-            if (xStart <= area.right && xEnd >= area.left && yVal >= area.top && yVal <= area.bottom) {
-                ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 3]);
-                ctx.beginPath();
-                ctx.moveTo(Math.max(xStart, area.left), yVal);
-                ctx.lineTo(Math.min(xEnd, area.right), yVal);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-        });
+        if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
+            const labelDate = new Date(`${todayStr}T00:00:00`);
+            drawBubble(ctx, latestX, area.top + 22, labelDate, todaySummary.calories, true);
+        }
 
         ctx.restore();
     }
 };
 
-const dailySummaryPlugin = {
-    id: 'dailySummaryPlugin',
-    afterDatasetsDraw(chart) {
-        const dailySummaries = window.fitdashOverlayData?.dailySummaries || {};
-        const hrvByDate = window.fitdashOverlayData?.hrvByDate || {};
+function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
+    const date = new Date(dateStr);
+    const label = date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+    });
+    const calText = `${calories.toLocaleString()} cal`;
+
+    // RHR for the day
+    const dateKey = getLocalDateString(new Date(dateStr));
+    const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
+    const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
+    const hrvText = (hrv?.dailyRmssd != null) ? `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}` : null;
+
+
+
+
+    let text = `${label}\n${calText}\nRHR - ${rhr}`;
+    text += hrvText;
+    const lines = text.split('\n');
+    const padding = 6;
+    const lineHeight = 16;
+    const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2;
+    const height = lineHeight * lines.length + padding * 2;
+
+    const radius = 6;
+    const left = x - width / 2;
+    const top = y;
+
+    // Bubble background
+    ctx.fillStyle = highlight ? 'rgba(255, 255, 200, 0.9)' : 'rgba(230, 240, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(left + radius, top);
+    ctx.lineTo(left + width - radius, top);
+    ctx.quadraticCurveTo(left + width, top, left + width, top + radius);
+    ctx.lineTo(left + width, top + height - radius);
+    ctx.quadraticCurveTo(left + width, top + height, left + width - radius, top + height);
+    ctx.lineTo(left + radius, top + height);
+    ctx.quadraticCurveTo(left, top + height, left, top + height - radius);
+    ctx.lineTo(left, top + radius);
+    ctx.quadraticCurveTo(left, top, left + radius, top);
+    ctx.closePath();
+    ctx.fill();
+
+    // Bubble text
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    lines.forEach((line, index) => {
+        ctx.fillText(line, x, top + padding + index * lineHeight);
+    });
+}
+
+const workoutOverlayPlugin = {
+    id: 'workoutOverlayPlugin',
+    beforeDatasetsDraw(chart) {
+        const workouts = window.fitdashOverlayData?.workouts || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         ctx.save();
+        ctx.fillStyle = 'rgba(123,253,109,0.51)'; // orange
 
-        const minDate = new Date(x.min);
-        const maxDate = new Date(x.max);
-        let currentDate = new Date(minDate);
-        currentDate.setHours(0, 0, 0, 0);
+        workouts.forEach(({ start, end }) => {
+            const xStart = x.getPixelForValue(start);
+            const xEnd = x.getPixelForValue(end);
 
-        while (currentDate <= maxDate) {
-            const dateStr = getLocalDateString(currentDate);
-            const summary = dailySummaries[dateStr];
-            const hrv = hrvByDate[dateStr];
+            if (xEnd >= area.left && xStart <= area.right) {
+                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+            }
+        });
 
-            if (summary || hrv) {
-                const dayStart = new Date(currentDate);
-                dayStart.setHours(0, 0, 0, 0);
-                const dayEnd = new Date(currentDate);
-                dayEnd.setHours(23, 59, 59, 999);
+        ctx.restore();
+    }
+};
 
-                const xStart = x.getPixelForValue(dayStart);
-                const xEnd = x.getPixelForValue(dayEnd);
-                const xMid = (xStart + xEnd) / 2;
+const sleepOverlayPlugin = {
+    id: 'sleepOverlayPlugin',
+    beforeDatasetsDraw(chart) {
+        const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
+        const { ctx, chartArea: area, scales: { x } } = chart;
 
-                if (xMid >= area.left && xMid <= area.right) {
-                    const lines = [];
-                    if (summary?.restingHR) lines.push(`RHR: ${summary.restingHR}`);
-                    if (summary?.calories) lines.push(`Cal: ${summary.calories}`);
-                    if (hrv?.dailyRmssd) lines.push(`HRV: ${hrv.dailyRmssd}`);
+        const stageColors = {
+            light: 'rgba(105,218,255,0.4)', // light blue
+            deep: 'rgba(138,43,226,0.74)',   // purple
+            rem:  'rgba(233,113,248,0.66)',  // pink
+            wake: 'rgba(255,228,152,0.66)'  // light gray
+        };
 
-                    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                    ctx.font = '11px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'top';
+        ctx.save();
 
-                    let yOffset = area.top + 5;
-                    lines.forEach(line => {
-                        ctx.fillText(line, xMid, yOffset);
-                        yOffset += 14;
-                    });
-                }
+        sleepPhases.forEach(({ start, end, stage }) => {
+            const xStart = x.getPixelForValue(start);
+            const xEnd = x.getPixelForValue(end);
+
+            if (xEnd >= area.left && xStart <= area.right) {
+                ctx.fillStyle = stageColors[stage] || 'rgba(0,0,0,0.05)';
+                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
+            }
+        });
+
+        ctx.restore();
+    }
+};
+
+const restingHrPlugin = {
+    id: 'restingHrPlugin',
+    beforeDraw(chart) {
+        const { ctx, chartArea: area, scales: { x, y } } = chart;
+        const restingHRs = window.fitdashOverlayData?.restingHRByDate || {};
+
+        for (const [dateStr, hr] of Object.entries(restingHRs)) {
+            if (!hr) continue;
+
+            const hrY = y.getPixelForValue(hr);
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0,255,224,0.88)';
+            ctx.setLineDash([4, 4]);
+
+            // Draw line only if visible
+            const date = new Date(dateStr + 'T00:00:00');
+            const startX = x.getPixelForValue(date);
+            const endX = x.getPixelForValue(new Date(date.getTime() + 24 * 60 * 60 * 1000));
+
+            if (endX >= area.left && startX <= area.right) {
+                ctx.beginPath();
+                ctx.moveTo(startX, hrY);
+                ctx.lineTo(endX, hrY);
+                ctx.stroke();
             }
 
-            currentDate.setDate(currentDate.getDate() + 1);
+            ctx.restore();
+        }
+    }
+};
+
+const midnightMarkerPlugin = {
+    id: 'midnightMarkerPlugin',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: area, scales: { x } } = chart;
+
+        const start = x.getUserBounds().min;
+        const end = x.getUserBounds().max;
+
+        const startDate = new Date(start);
+        startDate.setHours(0, 0, 0, 0);
+
+        const MS_PER_DAY = 24 * 60 * 60 * 1000;
+        const numDays = Math.ceil((end - startDate) / MS_PER_DAY);
+
+        ctx.save();
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = 'rgba(146,146,255,0.78)';
+        ctx.fillStyle = 'rgba(103,220,255,0.9)';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        for (let i = 0; i <= numDays; i++) {
+            const midnight = new Date(startDate.getTime() + i * MS_PER_DAY);
+            const xPos = x.getPixelForValue(midnight);
+
+            if (xPos >= area.left && xPos <= area.right) {
+                // Draw vertical line
+                ctx.beginPath();
+                ctx.moveTo(xPos, area.top);
+                ctx.lineTo(xPos, area.bottom);
+                ctx.stroke();
+
+                // Format label: "Mon, Mar 24"
+                const label = midnight.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                // Draw label above the line
+                ctx.fillText(label, xPos, area.top + 4);
+            }
         }
 
         ctx.restore();
     }
 };
 
-function displayHeartRateChart(timeLabels, heartRateValues) {
+
+
+function getHRGradientColor(hr, restingHR = 60) {
+    if (hr < restingHR) {
+        // Below resting: blue → purple
+        const minHR = 40;  // minimum expected HR
+        const ratio = Math.max(0, Math.min(1, (hr - minHR) / (restingHR - minHR)));
+        const hue = 270 - (70 * ratio);  // 270 → 200
+        return `hsl(${hue}, 100%, 50%)`;
+    }
+
+    // Above resting: standard zone colors
+    const zones = [
+        { min: restingHR, max: 111, startHue: 200, endHue: 200 },
+        { min: 111, max: 136, startHue: 200, endHue: 50 },
+        { min: 136, max: 162, startHue: 50, endHue: 25 },
+        { min: 162, max: 220, startHue: 25, endHue: 0 }
+    ];
+
+    for (const zone of zones) {
+        if (hr < zone.max) {
+            const ratio = (hr - zone.min) / (zone.max - zone.min);
+            const hue = zone.startHue + (zone.endHue - zone.startHue) * ratio;
+            return `hsl(${hue}, 100%, 50%)`;
+        }
+    }
+
+    return 'hsl(0, 100%, 50%)'; // max red fallback
+}
+
+
+
+function displayHeartRateChart(labels, data) {
+    const fullDateLabels = labels.map(time => {
+        const [hours, minutes] = time.split(':').map(Number);
+        const today = new Date();
+        today.setHours(hours, minutes, 0, 0);  // Set the time (hours and minutes)
+        return today;  // Return a Date object
+    });
+
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
-    const formattedData = timeLabels.map((time, index) => ({
-        x: new Date(`${getLocalDateString(currentStartDate)}T${time}`),
-        y: heartRateValues[index],
-    }));
+    Chart.register(
+        workoutOverlayPlugin,
+        sleepOverlayPlugin,
+        restingHrPlugin,
+        midnightMarkerPlugin,
+        summaryBubblePlugin,
+        workoutEmojiPlugin
+    );
 
-    window.heartRateChart = new Chart(ctx, {
+    new Chart(ctx, {
         type: 'line',
         data: {
+            labels: fullDateLabels,
             datasets: [{
-                label: 'Heart Rate',
-                data: formattedData,
-                borderColor: 'rgba(255, 99, 132, 1)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                borderWidth: 2,
+                label: 'Heart Rate (BPM)',
+                data: data,
+                borderColor: 'rgba(99, 160, 255, 1)',  // fallback
                 pointRadius: 0,
-                tension: 0.3,
-            }],
+                pointRadiusOnHover: 0,
+                fill: false,
+                tension: 0.1,
+
+                segment: {
+                    borderColor: ctx => {
+                        const hr = ctx.p1.parsed.y;
+                        const point = ctx.p1;
+                        const time = new Date(point.parsed.x);
+                        const dateStr = getLocalDateString(time);
+                        const restingHR = window.fitdashOverlayData?.restingHRByDate?.[dateStr] || 66;
+                        return getHRGradientColor(hr, restingHR);
+                    }
+                }
+            }]
         },
-        plugins: [sleepPhasePlugin, restingHRLinePlugin, dailySummaryPlugin, workoutEmojiPlugin],
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            interaction: {
+                mode: 'nearest',
+                intersect: false,
+            },
             plugins: {
                 tooltip: {
-                    mode: 'index',
-                    intersect: false,
                     callbacks: {
                         label: function (context) {
                             const hr = context.parsed.y;
                             const time = new Date(context.parsed.x);
+
+                            // Sleep phase at this time
                             const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
                             const sleep = sleepPhases.find(phase =>
                                 time >= phase.start && time <= phase.end
@@ -470,7 +585,7 @@ function displayHeartRateChart(timeLabels, heartRateValues) {
                         enabled: true,
                         mode: 'x',
                         threshold: 5,
-                        onPan: onPan,
+                        onPan: onPan,  // Handle panning to load previous dates
                     },
                     zoom: {
                         wheel: {
@@ -480,7 +595,6 @@ function displayHeartRateChart(timeLabels, heartRateValues) {
                             enabled: true,
                         },
                         mode: 'x',
-                        onZoom: onZoom,
                     },
                 },
                 legend: {
@@ -493,9 +607,9 @@ function displayHeartRateChart(timeLabels, heartRateValues) {
                     time: {
                         unit: 'minute',
                         displayFormats: {
-                            minute: 'h:mm a',
+                            minute: 'h:mm a',  // AM/PM format
                         },
-                        tooltipFormat: 'MMMM d, h:mm a',
+                        tooltipFormat: 'MMMM d, h:mm a',  // Full date and time in tooltip
                     },
                     grid: {
                         color: 'rgba(255,255,255,0.1)',
@@ -535,268 +649,74 @@ function displayHeartRateChart(timeLabels, heartRateValues) {
     });
 }
 
-// Get all dates that need data in the visible range
-function getDatesInRange(startDate, endDate) {
-    const dates = [];
-    let current = new Date(startDate);
-    current.setHours(0, 0, 0, 0);
 
-    const end = new Date(endDate);
-    end.setHours(0, 0, 0, 0);
 
-    while (current <= end) {
-        dates.push(new Date(current));
-        current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
-}
-
-// Load data for all visible dates
-async function loadVisibleData(chart) {
-    const xScale = chart.scales.x;
-    const minDate = new Date(xScale.min);
-    const maxDate = new Date(xScale.max);
-
-    const datesToLoad = getDatesInRange(minDate, maxDate);
-
-    // Filter to only dates we haven't loaded or aren't loading
-    const newDates = datesToLoad.filter(date => {
-        const dateStr = getLocalDateString(date);
-        return !loadedDates.has(dateStr) && !loadingDates.has(dateStr);
-    });
-
-    const newOverlayDates = datesToLoad.filter(date => {
-        const dateStr = getLocalDateString(date);
-        return !loadedOverlayDates.has(dateStr) && !loadingOverlayDates.has(dateStr);
-    });
-
-    if (newDates.length === 0 && newOverlayDates.length === 0) {
-        return;
-    }
-
-    console.log(`Loading data for ${newDates.length} new dates:`, newDates.map(d => getLocalDateString(d)));
-
-    // Load all dates in parallel
-    const hrPromises = newDates.map(async date => {
-        const data = await fetchHeartRateDataForDate(date);
-        if (data.length > 0) {
-            addDataToChart(chart, data, date);
-            if (date < currentStartDate) {
-                currentStartDate = date;
-            }
-        }
-        return { date, data };
-    });
-
-    const overlayPromises = newOverlayDates.map(date => fetchOverlayDataForDate(date));
-
-    // Wait for all to complete
-    await Promise.all([...hrPromises, ...overlayPromises]);
-
-    // Update chart once after all data is loaded
-    chart.update('none');
-}
-
-// Handle panning: load data for visible range
+// Handle panning: fetch previous day's data if necessary and force an update
 async function onPan({ chart }) {
-    await loadVisibleData(chart);
+    const xScale = chart.scales.x;
+    const minDate = new Date(xScale.min);  // Visible minimum date
+
+    if (minDate < currentStartDate) {
+        console.log("Panned left: fetching previous day's data...");
+
+        // Fetch data for the previous day
+        const newDate = new Date(currentStartDate);
+        newDate.setDate(newDate.getDate() - 1);  // Go one day back
+
+        const newData = await fetchHeartRateDataForDate(newDate);
+        await fetchOverlayDataForDate(newDate);
+        if (newData.length > 0) {
+            addDataToChart(chart, newData, newDate);
+            currentStartDate = newDate;  // Update start date to include the new data
+        } else {
+            console.log(`No data available for ${getLocalDateString(newDate)}.`);
+        }
+
+        // Force chart update immediately after data is added
+        chart.update('none');
+    }
 }
 
-// Handle zooming: load data for visible range
-async function onZoom({ chart }) {
-    await loadVisibleData(chart);
-}
-
-// Main function to fetch initial data (now loads 3 days) and render the chart
+// Main function to fetch today's data and render the chart
 async function fetchHeartRateData() {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
-    // Load data for today and the previous 2 days (3 days total)
-    const dates = [];
-    for (let i = 2; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        dates.push(date);
-    }
+    const [heartRateData, workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
+        fetchHeartRateDataForDate(today),
+        fetchWorkoutSessions(today),
+        fetchSleepPhases(today),
+        fetchDailySummary(today),
+        fetchHRVSummary(today)
+    ]);
 
-    console.log('Loading initial 3 days of data:', dates.map(d => getLocalDateString(d)));
-
-    // Load all dates in parallel
-    const allPromises = dates.map(async date => {
-        const [heartRateData, workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
-            fetchHeartRateDataForDate(date),
-            fetchWorkoutSessions(date),
-            fetchSleepPhases(date),
-            fetchDailySummary(date),
-            fetchHRVSummary(date)
-        ]);
-
-        return { date, heartRateData, workouts, sleepPhases, dailySummary, hrv };
-    });
-
-    const results = await Promise.all(allPromises);
-
-    // Combine all data
-    let allHeartRateData = [];
-    let allWorkouts = [];
-    let allSleepPhases = [];
-    const restingHRByDate = {};
-    const dailySummaries = {};
-    const hrvByDate = {};
-
-    results.forEach(({ date, heartRateData, workouts, sleepPhases, dailySummary, hrv }) => {
-        const dateStr = getLocalDateString(date);
-
-        // Convert heart rate data to absolute timestamps
-        const formattedHR = heartRateData.map(entry => ({
-            x: new Date(`${dateStr}T${entry.time}`),
-            y: entry.value
-        }));
-        allHeartRateData = [...allHeartRateData, ...formattedHR];
-
-        allWorkouts = [...allWorkouts, ...workouts];
-        allSleepPhases = [...allSleepPhases, ...sleepPhases];
-
-        const { restingHR, calories } = dailySummary;
-        restingHRByDate[dateStr] = restingHR;
-        dailySummaries[dateStr] = { restingHR, calories };
-        hrvByDate[dateStr] = hrv;
-
-        loadedDates.add(dateStr);
-        loadedOverlayDates.add(dateStr);
-    });
-
-    // Sort heart rate data by time
-    allHeartRateData.sort((a, b) => a.x - b.x);
-
-    if (allHeartRateData.length === 0) {
-        alert("Failed to get heart rate data");
+    if (heartRateData.length === 0) {
+        alert("Failed to get today's data");
         return;
     }
 
-    // Set current start date to earliest date
-    currentStartDate = dates[0];
+    const timeLabels = heartRateData.map(entry => entry.time);
+    const heartRateValues = heartRateData.map(entry => entry.value);
+    const { restingHR, calories } = dailySummary;
 
     window.fitdashOverlayData = {
-        workouts: allWorkouts,
-        sleepPhases: allSleepPhases,
-        restingHRByDate,
-        dailySummaries,
-        hrvByDate
+        workouts,
+        sleepPhases,
+        restingHRByDate: { [getLocalDateString(today)]: restingHR },
+        dailySummaries: {
+            [getLocalDateString(today)]: { restingHR, calories }
+        }
+    };
+    window.fitdashOverlayData.hrvByDate = {
+        ...(window.fitdashOverlayData.hrvByDate || {}),
+        [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
     };
 
-    // Create chart with combined data
-    const ctx = document.getElementById('heartrateChart').getContext('2d');
-
-    window.heartRateChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            datasets: [{
-                label: 'Heart Rate',
-                data: allHeartRateData,
-                borderColor: 'rgba(255, 99, 132, 1)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                borderWidth: 2,
-                pointRadius: 0,
-                tension: 0.3,
-            }],
-        },
-        plugins: [sleepPhasePlugin, restingHRLinePlugin, dailySummaryPlugin, workoutEmojiPlugin],
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function (context) {
-                            const hr = context.parsed.y;
-                            const time = new Date(context.parsed.x);
-                            const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
-                            const sleep = sleepPhases.find(phase =>
-                                time >= phase.start && time <= phase.end
-                            );
-
-                            const lines = [`❤️ ${hr} BPM`];
-
-                            if (sleep) lines.push(`💤 Sleep: ${sleep.stage}`);
-
-                            return lines;
-                        }
-                    },
-                },
-                zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'x',
-                        threshold: 5,
-                        onPan: onPan,
-                    },
-                    zoom: {
-                        wheel: {
-                            enabled: true,
-                        },
-                        pinch: {
-                            enabled: true,
-                        },
-                        mode: 'x',
-                        onZoom: onZoom,
-                    },
-                },
-                legend: {
-                    display: false,
-                },
-            },
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'minute',
-                        displayFormats: {
-                            minute: 'h:mm a',
-                        },
-                        tooltipFormat: 'MMMM d, h:mm a',
-                    },
-                    grid: {
-                        color: 'rgba(255,255,255,0.1)',
-                    },
-                    ticks: {
-                        color: '#ccc',
-                        autoSkip: true,
-                        maxTicksLimit: 10,
-                        callback: function (value, index) {
-                            const date = new Date(value);
-                            return date.toLocaleTimeString([], {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true
-                            });
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: 'Time of Day',
-                    },
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: 'Heart Rate (BPM)',
-                    },
-                    suggestedMin: 40,
-                    suggestedMax: 200,
-                },
-            },
-        },
-    });
+    displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
 }
 
 
 document.getElementById('heartrateChart').addEventListener('mousedown', (event) => {
-    event.preventDefault();
+    event.preventDefault();  // Prevent browser from selecting or dragging the chart element
 });
 
 function getHashParam(name) {
@@ -805,6 +725,7 @@ function getHashParam(name) {
 }
 
 function safeRedirectToAuth() {
+    // prevent loops
     localStorage.setItem('auth_in_progress', '1');
     window.location.href = AUTH_URL;
 }
@@ -814,8 +735,9 @@ async function testToken(token) {
         const res = await fitbitFetch('https://api.fitbit.com/1/user/-/profile.json', {
             headers: { Authorization: `Bearer ${token}` }
         });
-        if (res.status === 401) return false;
+        if (res.status === 401) return false;   // definitely invalid
         if (!res.ok) {
+            // transient error (proxy hiccup, 5xx, etc.) -> don't invalidate token
             console.warn('testToken non-OK:', res.status);
             return true;
         }
@@ -827,35 +749,44 @@ async function testToken(token) {
 }
 
 async function initApp() {
+    // 1) Handle callback (hash) first
     const accessFromHash = getHashParam('access_token');
     if (accessFromHash) {
         localStorage.setItem('fitbit_access_token', accessFromHash);
         localStorage.removeItem('auth_in_progress');
+        // Strip hash without reloading to avoid double-runs
         history.replaceState(null, '', window.location.pathname + window.location.search);
     }
 
     const token = localStorage.getItem('fitbit_access_token');
 
+    // 2) If no token…
     if (!token) {
+        // If we just came from Fitbit and still no token, stop ping-ponging
         const cameFromFitbit = document.referrer && document.referrer.includes('fitbit.com');
         const alreadyAuthing = localStorage.getItem('auth_in_progress') === '1';
 
         if (cameFromFitbit || alreadyAuthing) {
             console.error('Auth failed or cancelled. Not redirecting again.');
+            // (Optional) show a UI to retry auth
             return;
         }
 
+        // Start one controlled auth attempt
         safeRedirectToAuth();
         return;
     }
 
+    // 3) Validate token (but be forgiving on transient failures)
     const valid = await testToken(token);
     if (!valid) {
+        // Only clear on confirmed 401 invalid token
         localStorage.removeItem('fitbit_access_token');
         safeRedirectToAuth();
         return;
     }
 
+    // 4) Ready
     fetchHeartRateData();
 }
 window.onload = initApp;

@@ -567,7 +567,7 @@ function displayHeartRateChart(labels, data) {
         workoutEmojiPlugin
     );
 
-    new Chart(ctx, {
+    window.heartRateChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: fullDateLabels,
@@ -717,13 +717,20 @@ async function onPan({ chart }) {
 // Main function to fetch today's data and render the chart
 async function fetchHeartRateData() {
     const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    const [heartRateData, workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv] = await Promise.all([
+    const [
+        heartRateData, workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv,
+        yesterdayHRData, yesterdayOverlay
+    ] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
         fetchDailySummary(today),
-        fetchHRVSummary(today)
+        fetchHRVSummary(today),
+        fetchHeartRateDataForDate(yesterday),
+        fetchOverlayDataForDate(yesterday),
     ]);
 
     if (heartRateData.length === 0) {
@@ -747,10 +754,19 @@ async function fetchHeartRateData() {
     };
     window.fitdashOverlayData.hrvByDate = {
         ...(window.fitdashOverlayData.hrvByDate || {}),
-        [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
+        [todayKey]: hrv
     };
 
-    displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
+    displayHeartRateChart(timeLabels, heartRateValues);
+
+    if (yesterdayHRData.length > 0) {
+        addDataToChart(window.heartRateChart, yesterdayHRData, yesterday);
+        currentStartDate = yesterday;
+        const yesterdayMidnight = new Date(yesterday);
+        yesterdayMidnight.setHours(0, 0, 0, 0);
+        window.heartRateChart.options.scales.x.min = yesterdayMidnight.getTime();
+        window.heartRateChart.update('none');
+    }
 }
 
 

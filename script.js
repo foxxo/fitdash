@@ -375,10 +375,10 @@ const sleepOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         const stageColors = {
-            light: 'rgba(105,218,255,0.4)', // light blue
-            deep: 'rgba(138,43,226,0.74)',   // purple
-            rem:  'rgba(233,113,248,0.66)',  // pink
-            wake: 'rgba(255,228,152,0.66)'  // light gray
+            light: 'rgba(70,130,200,0.35)',  // steel blue
+            deep:  'rgba(60,20,140,0.65)',   // indigo
+            rem:   'rgba(180,80,220,0.55)',  // violet
+            wake:  'rgba(200,160,40,0.45)',  // amber
         };
 
         ctx.save();

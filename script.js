@@ -243,10 +243,10 @@ function addDataToChart(chart, newData, date) {
 
     // Convert times to Date objects and prepend to chart data
     const fullDateLabels = timeLabels.map(time => new Date(time));
-    chart.data.labels.unshift(...fullDateLabels);
-    chart.data.datasets[0].data.unshift(...heartRateValues);
+    chart.data.labels = [...fullDateLabels, ...chart.data.labels];
+    chart.data.datasets[0].data = [...heartRateValues, ...chart.data.datasets[0].data];
 
-    chart.update();
+    chart.update('none');
 }
 
 const summaryBubblePlugin = {
@@ -403,15 +403,14 @@ const restingHrPlugin = {
         const { ctx, chartArea: area, scales: { x, y } } = chart;
         const restingHRs = window.fitdashOverlayData?.restingHRByDate || {};
 
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,255,224,0.88)';
+        ctx.setLineDash([4, 4]);
+
         for (const [dateStr, hr] of Object.entries(restingHRs)) {
             if (!hr) continue;
 
             const hrY = y.getPixelForValue(hr);
-            ctx.save();
-            ctx.strokeStyle = 'rgba(0,255,224,0.88)';
-            ctx.setLineDash([4, 4]);
-
-            // Draw line only if visible
             const date = new Date(dateStr + 'T00:00:00');
             const startX = x.getPixelForValue(date);
             const endX = x.getPixelForValue(new Date(date.getTime() + 24 * 60 * 60 * 1000));
@@ -422,11 +421,24 @@ const restingHrPlugin = {
                 ctx.lineTo(endX, hrY);
                 ctx.stroke();
             }
-
-            ctx.restore();
         }
+
+        ctx.restore();
     }
 };
+
+const _midnightLabelCache = new Map();
+function getMidnightLabel(midnight) {
+    const key = midnight.getTime();
+    if (_midnightLabelCache.has(key)) return _midnightLabelCache.get(key);
+    const label = midnight.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+    });
+    _midnightLabelCache.set(key, label);
+    return label;
+}
 
 const midnightMarkerPlugin = {
     id: 'midnightMarkerPlugin',
@@ -461,12 +473,7 @@ const midnightMarkerPlugin = {
                 ctx.lineTo(xPos, area.bottom);
                 ctx.stroke();
 
-                // Format label: "Mon, Mar 24"
-                const label = midnight.toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric'
-                });
+                const label = getMidnightLabel(midnight);
 
                 // Draw label above the line
                 ctx.fillText(label, xPos, area.top + 4);
@@ -479,32 +486,40 @@ const midnightMarkerPlugin = {
 
 
 
+const _hrColorCache = new Map();
 function getHRGradientColor(hr, restingHR = 60) {
+    const key = hr * 1000 + restingHR;
+    if (_hrColorCache.has(key)) return _hrColorCache.get(key);
+
+    let result;
     if (hr < restingHR) {
         // Below resting: blue → purple
         const minHR = 40;  // minimum expected HR
         const ratio = Math.max(0, Math.min(1, (hr - minHR) / (restingHR - minHR)));
         const hue = 270 - (70 * ratio);  // 270 → 200
-        return `hsl(${hue}, 100%, 50%)`;
-    }
+        result = `hsl(${hue}, 100%, 50%)`;
+    } else {
+        // Above resting: standard zone colors
+        const zones = [
+            { min: restingHR, max: 111, startHue: 200, endHue: 200 },
+            { min: 111, max: 136, startHue: 200, endHue: 50 },
+            { min: 136, max: 162, startHue: 50, endHue: 25 },
+            { min: 162, max: 220, startHue: 25, endHue: 0 }
+        ];
 
-    // Above resting: standard zone colors
-    const zones = [
-        { min: restingHR, max: 111, startHue: 200, endHue: 200 },
-        { min: 111, max: 136, startHue: 200, endHue: 50 },
-        { min: 136, max: 162, startHue: 50, endHue: 25 },
-        { min: 162, max: 220, startHue: 25, endHue: 0 }
-    ];
-
-    for (const zone of zones) {
-        if (hr < zone.max) {
-            const ratio = (hr - zone.min) / (zone.max - zone.min);
-            const hue = zone.startHue + (zone.endHue - zone.startHue) * ratio;
-            return `hsl(${hue}, 100%, 50%)`;
+        result = 'hsl(0, 100%, 50%)'; // max red fallback
+        for (const zone of zones) {
+            if (hr < zone.max) {
+                const ratio = (hr - zone.min) / (zone.max - zone.min);
+                const hue = zone.startHue + (zone.endHue - zone.startHue) * ratio;
+                result = `hsl(${hue}, 100%, 50%)`;
+                break;
+            }
         }
     }
 
-    return 'hsl(0, 100%, 50%)'; // max red fallback
+    _hrColorCache.set(key, result);
+    return result;
 }
 
 
@@ -652,12 +667,13 @@ function displayHeartRateChart(labels, data) {
 
 
 // Handle panning: fetch previous day's data if necessary and force an update
+let isFetchingPanData = false;
 async function onPan({ chart }) {
     const xScale = chart.scales.x;
     const minDate = new Date(xScale.min);  // Visible minimum date
 
-    if (minDate < currentStartDate) {
-        console.log("Panned left: fetching previous day's data...");
+    if (minDate < currentStartDate && !isFetchingPanData) {
+        isFetchingPanData = true;
 
         // Fetch data for the previous day
         const newDate = new Date(currentStartDate);
@@ -668,12 +684,9 @@ async function onPan({ chart }) {
         if (newData.length > 0) {
             addDataToChart(chart, newData, newDate);
             currentStartDate = newDate;  // Update start date to include the new data
-        } else {
-            console.log(`No data available for ${getLocalDateString(newDate)}.`);
         }
 
-        // Force chart update immediately after data is added
-        chart.update('none');
+        isFetchingPanData = false;
     }
 }
 

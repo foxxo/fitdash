@@ -209,9 +209,12 @@ async function fetchOverlayDataForDate(date) {
     if (loadedOverlayDates.has(formattedDate)) return;
     loadedOverlayDates.add(formattedDate);
 
+    const prevDay = new Date(date);
+    prevDay.setDate(prevDay.getDate() - 1);
+
     const [workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
         fetchWorkoutSessions(date),
-        fetchSleepPhases(date),
+        fetchSleepPhases(prevDay),
         fetchDailySummary(date),
         fetchHRVSummary(date)
     ]);
@@ -710,10 +713,13 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
     const [heartRateData, workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
-        fetchSleepPhases(today),
+        fetchSleepPhases(yesterday),
         fetchDailySummary(today),
         fetchHRVSummary(today)
     ]);

@@ -144,24 +144,36 @@ async function fetchSleepPhases(date) {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) return { phases: [], summary: null };
 
     const data = await response.json();
     const sleepEntries = data.sleep || [];
     const phases = [];
+    const summaryTotals = { light: 0, deep: 0, rem: 0 };
 
     for (const session of sleepEntries) {
-        if (session.levels && session.levels.data) {
-            for (const stage of session.levels.data) {
-                phases.push({
-                    start: new Date(stage.dateTime),
-                    end: new Date(new Date(stage.dateTime).getTime() + stage.seconds * 1000),
-                    stage: stage.level
-                });
+        if (session.levels) {
+            if (session.levels.data) {
+                for (const stage of session.levels.data) {
+                    phases.push({
+                        start: new Date(stage.dateTime),
+                        end: new Date(new Date(stage.dateTime).getTime() + stage.seconds * 1000),
+                        stage: stage.level
+                    });
+                }
+            }
+            if (session.levels.summary) {
+                for (const stage of ['light', 'deep', 'rem']) {
+                    summaryTotals[stage] += session.levels.summary[stage]?.minutes ?? 0;
+                }
             }
         }
     }
-    return phases;
+
+    const summaryTotal = summaryTotals.light + summaryTotals.deep + summaryTotals.rem;
+    const summary = summaryTotal > 0 ? { total: summaryTotal, ...summaryTotals } : null;
+
+    return { phases, summary };
 }
 
 async function fetchDailySummary(date) {
@@ -209,7 +221,7 @@ async function fetchOverlayDataForDate(date) {
     if (loadedOverlayDates.has(formattedDate)) return;
     loadedOverlayDates.add(formattedDate);
 
-    const [workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
+    const [workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv] = await Promise.all([
         fetchWorkoutSessions(date),
         fetchSleepPhases(date),
         fetchDailySummary(date),
@@ -219,18 +231,14 @@ async function fetchOverlayDataForDate(date) {
     const { restingHR, calories } = dailySummary;
     if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
 
-    const sleepTotals = { light: 0, deep: 0, rem: 0 };
-    for (const { start, end, stage } of sleepPhases) {
-        if (stage !== 'wake') sleepTotals[stage] += (end - start) / 60000;
-    }
-    const totalSleep = sleepTotals.light + sleepTotals.deep + sleepTotals.rem;
-
     window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
     window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
-    window.fitdashOverlayData.sleepStatsByDate = {
-        ...(window.fitdashOverlayData.sleepStatsByDate || {}),
-        [formattedDate]: { total: totalSleep, ...sleepTotals }
-    };
+    if (sleepSummary) {
+        window.fitdashOverlayData.sleepStatsByDate = {
+            ...(window.fitdashOverlayData.sleepStatsByDate || {}),
+            [formattedDate]: sleepSummary
+        };
+    }
     window.fitdashOverlayData.restingHRByDate = {
         ...(window.fitdashOverlayData.restingHRByDate || {}),
         [formattedDate]: restingHR
@@ -710,7 +718,7 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
-    const [heartRateData, workouts, sleepPhases, dailySummary, hrv] = await Promise.all([
+    const [heartRateData, workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
@@ -726,13 +734,15 @@ async function fetchHeartRateData() {
     const timeLabels = heartRateData.map(entry => entry.time);
     const heartRateValues = heartRateData.map(entry => entry.value);
     const { restingHR, calories } = dailySummary;
+    const todayKey = getLocalDateString(today);
 
     window.fitdashOverlayData = {
         workouts,
         sleepPhases,
-        restingHRByDate: { [getLocalDateString(today)]: restingHR },
+        ...(sleepSummary ? { sleepStatsByDate: { [todayKey]: sleepSummary } } : {}),
+        restingHRByDate: { [todayKey]: restingHR },
         dailySummaries: {
-            [getLocalDateString(today)]: { restingHR, calories }
+            [todayKey]: { restingHR, calories }
         }
     };
     window.fitdashOverlayData.hrvByDate = {

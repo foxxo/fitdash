@@ -219,8 +219,18 @@ async function fetchOverlayDataForDate(date) {
     const { restingHR, calories } = dailySummary;
     if (!window.fitdashOverlayData) window.fitdashOverlayData = {};
 
+    const sleepTotals = { light: 0, deep: 0, rem: 0 };
+    for (const { start, end, stage } of sleepPhases) {
+        if (stage !== 'wake') sleepTotals[stage] += (end - start) / 60000;
+    }
+    const totalSleep = sleepTotals.light + sleepTotals.deep + sleepTotals.rem;
+
     window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
     window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
+    window.fitdashOverlayData.sleepStatsByDate = {
+        ...(window.fitdashOverlayData.sleepStatsByDate || {}),
+        [formattedDate]: { total: totalSleep, ...sleepTotals }
+    };
     window.fitdashOverlayData.restingHRByDate = {
         ...(window.fitdashOverlayData.restingHRByDate || {}),
         [formattedDate]: restingHR
@@ -292,6 +302,12 @@ const summaryBubblePlugin = {
     }
 };
 
+function formatDuration(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const date = new Date(dateStr);
     const label = date.toLocaleDateString('en-US', {
@@ -301,17 +317,17 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     });
     const calText = `${calories.toLocaleString()} cal`;
 
-    // RHR for the day
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
     const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
-    const hrvText = (hrv?.dailyRmssd != null) ? `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}` : null;
-
-
-
+    const sleep = window.fitdashOverlayData?.sleepStatsByDate?.[dateKey];
 
     let text = `${label}\n${calText}\nRHR - ${rhr}`;
-    text += hrvText;
+    if (hrv?.dailyRmssd != null) text += `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`;
+    if (sleep?.total > 0) {
+        text += `\nSleep  ${formatDuration(sleep.total)}`;
+        text += `\nL ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
+    }
     const lines = text.split('\n');
     const padding = 6;
     const lineHeight = 16;

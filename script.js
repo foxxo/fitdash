@@ -149,7 +149,8 @@ async function fetchSleepPhases(date) {
     const data = await response.json();
     const sleepEntries = data.sleep || [];
     const phases = [];
-    const summaryTotals = { light: 0, deep: 0, rem: 0 };
+    // `asleep` comes from Fitbit's classic-mode tracking (naps / short sessions); it counts toward total.
+    const summaryTotals = { light: 0, deep: 0, rem: 0, asleep: 0 };
 
     for (const session of sleepEntries) {
         if (session.levels) {
@@ -163,14 +164,14 @@ async function fetchSleepPhases(date) {
                 }
             }
             if (session.levels.summary) {
-                for (const stage of ['light', 'deep', 'rem']) {
+                for (const stage of ['light', 'deep', 'rem', 'asleep']) {
                     summaryTotals[stage] += session.levels.summary[stage]?.minutes ?? 0;
                 }
             }
         }
     }
 
-    const summaryTotal = summaryTotals.light + summaryTotals.deep + summaryTotals.rem;
+    const summaryTotal = summaryTotals.light + summaryTotals.deep + summaryTotals.rem + summaryTotals.asleep;
     const summary = summaryTotal > 0 ? { total: summaryTotal, ...summaryTotals } : null;
 
     return { phases, summary };
@@ -334,7 +335,12 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     if (hrv?.dailyRmssd != null) text += `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`;
     if (sleep?.total > 0) {
         text += `\nSleep  ${formatDuration(sleep.total)}`;
-        text += `\nL ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
+        const hasStages = (sleep.light + sleep.deep + sleep.rem) > 0;
+        if (hasStages) {
+            let line = `\nL ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
+            if (sleep.asleep > 0) line += `  A ${formatDuration(sleep.asleep)}`;
+            text += line;
+        }
     }
     const lines = text.split('\n');
     const padding = 6;
@@ -399,10 +405,11 @@ const sleepOverlayPlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
 
         const stageColors = {
-            light: 'rgba(70,130,200,0.35)',  // steel blue
-            deep:  'rgba(60,20,140,0.65)',   // indigo
-            rem:   'rgba(180,80,220,0.55)',  // violet
-            wake:  'rgba(200,160,40,0.45)',  // amber
+            light:  'rgba(70,130,200,0.35)', // steel blue
+            deep:   'rgba(60,20,140,0.65)',  // indigo
+            rem:    'rgba(180,80,220,0.55)', // violet
+            wake:   'rgba(200,160,40,0.45)', // amber
+            asleep: 'rgba(90,160,190,0.45)', // teal — classic-mode "asleep" (no stage breakdown)
         };
 
         ctx.save();
@@ -613,7 +620,13 @@ function displayHeartRateChart(labels, data) {
 
                             const lines = [`❤️ ${hr} BPM`];
 
-                            if (sleep) lines.push(`💤 Sleep: ${sleep.stage}`);
+                            if (sleep) {
+                                const stageLabels = {
+                                    light: 'Light', deep: 'Deep', rem: 'REM', wake: 'Awake',
+                                    asleep: 'Asleep', awake: 'Awake', restless: 'Restless',
+                                };
+                                lines.push(`💤 ${stageLabels[sleep.stage] || sleep.stage}`);
+                            }
 
                             return lines;
                         }

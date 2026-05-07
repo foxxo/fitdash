@@ -30,6 +30,13 @@ function parseSheetDate(raw) {
     if (!raw) return null;
     const s = raw.trim();
     if (!s) return null;
+    // Sheet dates come in as "M/D" with no year — assume the current year.
+    const md = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (md) {
+        const d = new Date(new Date().getFullYear(), parseInt(md[1], 10) - 1, parseInt(md[2], 10));
+        if (isNaN(d.getTime())) return null;
+        return getLocalDateString(d);
+    }
     const d = new Date(s);
     if (isNaN(d.getTime())) return null;
     return getLocalDateString(d);

@@ -3,6 +3,102 @@ const REDIRECT_URI = 'https://foxxo.github.io/fitdash/';
 const AUTH_URL = `https://www.fitbit.com/oauth2/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=activity%20heartrate%20sleep%20profile&expires_in=604800`;
 const NETLIFY_BASE = "https://fitdashproxy.netlify.app/.netlify/functions/fitbit-proxy";
 
+const DRINKS_SHEET_ID = '1L0SoHJxTgcAC4EaV5kdM05FIprhEHlqa8_C13LnQ_VI';
+const DRINKS_SHEET_URL = `https://docs.google.com/spreadsheets/d/${DRINKS_SHEET_ID}/export?format=csv`;
+
+async function proxyFetchText(targetUrl) {
+    try {
+        const res = await fetch(NETLIFY_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: targetUrl, method: 'GET', headers: {} }),
+            redirect: 'follow',
+        });
+        if (!res.ok) {
+            console.warn('proxyFetchText non-OK', res.status);
+            return null;
+        }
+        return await res.text();
+    } catch (e) {
+        console.warn('proxyFetchText error', e);
+        return null;
+    }
+}
+
+function parseCsv(text) {
+    const rows = [];
+    let row = [], cur = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                if (text[i + 1] === '"') { cur += '"'; i++; }
+                else inQuotes = false;
+            } else cur += ch;
+        } else if (ch === '"') inQuotes = true;
+        else if (ch === ',') { row.push(cur); cur = ''; }
+        else if (ch === '\r') { /* skip */ }
+        else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else cur += ch;
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+}
+
+function parseSheetDate(raw) {
+    if (!raw) return null;
+    const s = raw.trim();
+    if (!s) return null;
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+    return getLocalDateString(d);
+}
+
+// Order matters: more-specific patterns first.
+const DRINK_EMOJI_RULES = [
+    [/champagne|prosecco|sparkling|cava|bubbly/i, '🍾'],
+    [/sake/i, '🍶'],
+    [/wine|red|white|ros[eé]|merlot|cab(ernet)?|chardonnay|pinot|riesling|sauvignon/i, '🍷'],
+    [/beer|ale|lager|ipa|stout|pilsner|porter|hefeweizen|saison/i, '🍺'],
+    [/cocktail|martini|margarita|mojito|daiquiri|negroni|manhattan|old.?fashioned|spritz|sour|highball|julep|gimlet|cosmo/i, '🍸'],
+    [/vodka|gin|rum|tequila|mezcal/i, '🍸'],
+];
+
+function emojiForDrink(label) {
+    for (const [re, emoji] of DRINK_EMOJI_RULES) {
+        if (re.test(label)) return emoji;
+    }
+    return '🥃'; // default: whisky/cognac/pickleback/etc.
+}
+
+function emojisForDrinkItem(item) {
+    const s = item.trim();
+    if (!s) return '';
+    const m = s.match(/^(\d+)\s+(.+)$/);
+    const count = m ? Math.max(1, Math.min(10, parseInt(m[1], 10))) : 1;
+    const label = m ? m[2] : s;
+    return emojiForDrink(label).repeat(count);
+}
+
+function emojisForDrinksList(cell) {
+    if (!cell) return '';
+    return cell.split(',').map(emojisForDrinkItem).join('');
+}
+
+async function fetchDrinksByDate() {
+    const text = await proxyFetchText(DRINKS_SHEET_URL);
+    if (!text) return {};
+    const rows = parseCsv(text);
+    const map = {};
+    for (const row of rows) {
+        const dateKey = parseSheetDate(row[0]);
+        if (!dateKey) continue;
+        const emojis = emojisForDrinksList(row[1] || ''); // column B
+        if (emojis) map[dateKey] = emojis;
+    }
+    return map;
+}
+
 async function fitbitFetch(targetUrl, init = {}) {
     // prefer header passed in, otherwise attach stored token
     const token = localStorage.getItem('fitbit_access_token');
@@ -342,6 +438,8 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
             text += line;
         }
     }
+    const drinks = window.fitdashOverlayData?.drinksByDate?.[dateKey];
+    if (drinks) text += `\n${drinks}`;
     const lines = text.split('\n');
     const padding = 6;
     const lineHeight = 16;
@@ -731,12 +829,13 @@ async function onPan({ chart }) {
 async function fetchHeartRateData() {
     const today = new Date();
 
-    const [heartRateData, workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv] = await Promise.all([
+    const [heartRateData, workouts, { phases: sleepPhases, summary: sleepSummary }, dailySummary, hrv, drinksByDate] = await Promise.all([
         fetchHeartRateDataForDate(today),
         fetchWorkoutSessions(today),
         fetchSleepPhases(today),
         fetchDailySummary(today),
-        fetchHRVSummary(today)
+        fetchHRVSummary(today),
+        fetchDrinksByDate()
     ]);
 
     if (heartRateData.length === 0) {
@@ -762,6 +861,7 @@ async function fetchHeartRateData() {
         ...(window.fitdashOverlayData.hrvByDate || {}),
         [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
     };
+    window.fitdashOverlayData.drinksByDate = drinksByDate || {};
 
     displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
 }

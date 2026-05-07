@@ -418,31 +418,50 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
         month: 'short',
         day: 'numeric'
     });
-    const calText = `${calories.toLocaleString()} cal`;
 
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
     const hrv = window.fitdashOverlayData?.hrvByDate?.[dateKey];
     const sleep = window.fitdashOverlayData?.sleepStatsByDate?.[dateKey];
+    const drinks = window.fitdashOverlayData?.drinksByDate?.[dateKey];
 
-    let text = `${label}\n${calText}\nRHR - ${rhr}`;
-    if (hrv?.dailyRmssd != null) text += `\nHRV - ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`;
+    const HEADER = 'bold 13px sans-serif';
+    const BODY = '12px sans-serif';
+    const DIM = '10px sans-serif';
+
+    const lines = [
+        { text: `${label} · ${calories.toLocaleString()} cal`, font: HEADER, color: '#222' }
+    ];
+
+    const hrParts = [];
+    if (rhr) hrParts.push(`❤ ${rhr}`);
+    if (hrv?.dailyRmssd != null) hrParts.push(`💓 ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`);
+    if (hrParts.length) lines.push({ text: hrParts.join('   '), font: BODY, color: '#333' });
+
     if (sleep?.total > 0) {
-        text += `\nSleep  ${formatDuration(sleep.total)}`;
+        lines.push({ text: `💤 ${formatDuration(sleep.total)}`, font: BODY, color: '#333' });
         const hasStages = (sleep.light + sleep.deep + sleep.rem) > 0;
         if (hasStages) {
-            let line = `\nL ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
-            if (sleep.asleep > 0) line += `  A ${formatDuration(sleep.asleep)}`;
-            text += line;
+            let stages = `L ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
+            if (sleep.asleep > 0) stages += `  A ${formatDuration(sleep.asleep)}`;
+            lines.push({ text: stages, font: DIM, color: '#666' });
         }
     }
-    const drinks = window.fitdashOverlayData?.drinksByDate?.[dateKey];
-    if (drinks) text += `\n${drinks}`;
-    const lines = text.split('\n');
+
+    if (drinks) lines.push({ text: drinks, font: BODY, color: '#333' });
+
     const padding = 6;
-    const lineHeight = 16;
-    const width = Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2;
-    const height = lineHeight * lines.length + padding * 2;
+    const lineHeightFor = font => parseInt(font.match(/(\d+)px/)[1], 10) + 3;
+
+    let maxWidth = 0;
+    let height = padding * 2;
+    for (const line of lines) {
+        ctx.font = line.font;
+        const w = ctx.measureText(line.text).width;
+        if (w > maxWidth) maxWidth = w;
+        height += lineHeightFor(line.font);
+    }
+    const width = maxWidth + padding * 2;
 
     const radius = 6;
     const left = x - width / 2;
@@ -464,12 +483,15 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     ctx.fill();
 
     // Bubble text
-    ctx.fillStyle = '#333';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    lines.forEach((line, index) => {
-        ctx.fillText(line, x, top + padding + index * lineHeight);
-    });
+    let cursorY = top + padding;
+    for (const line of lines) {
+        ctx.font = line.font;
+        ctx.fillStyle = line.color;
+        ctx.fillText(line.text, x, cursorY);
+        cursorY += lineHeightFor(line.font);
+    }
 }
 
 const workoutOverlayPlugin = {

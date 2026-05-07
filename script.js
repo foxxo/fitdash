@@ -6,25 +6,6 @@ const NETLIFY_BASE = "https://fitdashproxy.netlify.app/.netlify/functions/fitbit
 const DRINKS_SHEET_ID = '1L0SoHJxTgcAC4EaV5kdM05FIprhEHlqa8_C13LnQ_VI';
 const DRINKS_SHEET_URL = `https://docs.google.com/spreadsheets/d/${DRINKS_SHEET_ID}/export?format=csv`;
 
-async function proxyFetchText(targetUrl) {
-    try {
-        const res = await fetch(NETLIFY_BASE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: targetUrl, method: 'GET', headers: {} }),
-            redirect: 'follow',
-        });
-        if (!res.ok) {
-            console.warn('proxyFetchText non-OK', res.status);
-            return null;
-        }
-        return await res.text();
-    } catch (e) {
-        console.warn('proxyFetchText error', e);
-        return null;
-    }
-}
-
 function parseCsv(text) {
     const rows = [];
     let row = [], cur = '', inQuotes = false;
@@ -86,8 +67,18 @@ function emojisForDrinksList(cell) {
 }
 
 async function fetchDrinksByDate() {
-    const text = await proxyFetchText(DRINKS_SHEET_URL);
-    if (!text) return {};
+    let text;
+    try {
+        const res = await fetch(DRINKS_SHEET_URL, { redirect: 'follow' });
+        if (!res.ok) {
+            console.warn('fetchDrinksByDate non-OK', res.status);
+            return {};
+        }
+        text = await res.text();
+    } catch (e) {
+        console.warn('fetchDrinksByDate error', e);
+        return {};
+    }
     const rows = parseCsv(text);
     const map = {};
     for (const row of rows) {

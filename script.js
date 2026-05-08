@@ -489,19 +489,29 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const padding = 6;
     const lineHeightFor = font => parseInt(font.match(/(\d+)px/)[1], 10) + 3;
 
+    // Drinks line: dark inset bubble for emoji/×N contrast.
+    const DRINKS_INSET_PAD_X = 6;
+    const DRINKS_INSET_PAD_Y = 2;
+    const DRINKS_INSET_RADIUS = 4;
+
     const segmentWidth = (seg) => {
         const full = ctx.measureText(seg.text).width;
         return seg.type === 'half' ? full / 2 : full;
     };
     const drinksLineWidth = (line) => line.segments.reduce((sum, s) => sum + segmentWidth(s), 0);
+    const lineExtraHeight = (line) => line.type === 'drinks' ? DRINKS_INSET_PAD_Y * 2 : 0;
+    const lineWidth = (line) => {
+        ctx.font = line.font;
+        if (line.type !== 'drinks') return ctx.measureText(line.text).width;
+        return drinksLineWidth(line) + DRINKS_INSET_PAD_X * 2;
+    };
 
     let maxWidth = 0;
     let height = padding * 2;
     for (const line of lines) {
-        ctx.font = line.font;
-        const w = line.type === 'drinks' ? drinksLineWidth(line) : ctx.measureText(line.text).width;
+        const w = lineWidth(line);
         if (w > maxWidth) maxWidth = w;
-        height += lineHeightFor(line.font);
+        height += lineHeightFor(line.font) + lineExtraHeight(line);
     }
     const width = maxWidth + padding * 2;
 
@@ -533,22 +543,47 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
         ctx.fillStyle = line.color;
         if (line.type === 'drinks') {
             const lineHeight = lineHeightFor(line.font);
-            const totalWidth = drinksLineWidth(line);
+            const segWidth = drinksLineWidth(line);
+            const insetWidth = segWidth + DRINKS_INSET_PAD_X * 2;
+            const insetHeight = lineHeight + DRINKS_INSET_PAD_Y * 2;
+            const insetLeft = x - insetWidth / 2;
+            const insetTop = cursorY;
+            const r = DRINKS_INSET_RADIUS;
+
+            // Inset background
+            ctx.fillStyle = 'rgba(40, 40, 60, 0.85)';
+            ctx.beginPath();
+            ctx.moveTo(insetLeft + r, insetTop);
+            ctx.lineTo(insetLeft + insetWidth - r, insetTop);
+            ctx.quadraticCurveTo(insetLeft + insetWidth, insetTop, insetLeft + insetWidth, insetTop + r);
+            ctx.lineTo(insetLeft + insetWidth, insetTop + insetHeight - r);
+            ctx.quadraticCurveTo(insetLeft + insetWidth, insetTop + insetHeight, insetLeft + insetWidth - r, insetTop + insetHeight);
+            ctx.lineTo(insetLeft + r, insetTop + insetHeight);
+            ctx.quadraticCurveTo(insetLeft, insetTop + insetHeight, insetLeft, insetTop + insetHeight - r);
+            ctx.lineTo(insetLeft, insetTop + r);
+            ctx.quadraticCurveTo(insetLeft, insetTop, insetLeft + r, insetTop);
+            ctx.closePath();
+            ctx.fill();
+
+            // Segments. Emoji glyphs render as colored bitmaps regardless of
+            // fillStyle; white fill only affects the "×N" text segments.
+            ctx.fillStyle = '#fff';
             ctx.textAlign = 'left';
-            let cursorX = x - totalWidth / 2;
+            const segCursorY = cursorY + DRINKS_INSET_PAD_Y;
+            let cursorX = x - segWidth / 2;
             for (const seg of line.segments) {
                 const fullW = ctx.measureText(seg.text).width;
                 if (seg.type === 'half') {
                     const halfW = fullW / 2;
                     ctx.save();
                     ctx.beginPath();
-                    ctx.rect(cursorX, cursorY, halfW, lineHeight);
+                    ctx.rect(cursorX, segCursorY, halfW, lineHeight);
                     ctx.clip();
-                    ctx.fillText(seg.text, cursorX, cursorY);
+                    ctx.fillText(seg.text, cursorX, segCursorY);
                     ctx.restore();
                     cursorX += halfW;
                 } else {
-                    ctx.fillText(seg.text, cursorX, cursorY);
+                    ctx.fillText(seg.text, cursorX, segCursorY);
                     cursorX += fullW;
                 }
             }
@@ -556,7 +591,7 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
         } else {
             ctx.fillText(line.text, x, cursorY);
         }
-        cursorY += lineHeightFor(line.font);
+        cursorY += lineHeightFor(line.font) + lineExtraHeight(line);
     }
 }
 

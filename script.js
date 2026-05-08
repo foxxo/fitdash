@@ -160,6 +160,14 @@ currentStartDate.setHours(0, 0, 0, 0);
 const loadedDates = new Set();
 const loadedOverlayDates = new Set();
 
+// Dates currently in the load queue or in-flight. Painted as stripes so the
+// chart shows what's actively being worked on; cleared once a date's fetch
+// finishes (success, empty, or error). Stripes ⇔ "we're working on it".
+const queuedOrLoadingDates = new Set();
+const loadQueue = [];
+let isProcessingLoadQueue = false;
+let _heartRateChart = null;
+
 function getLocalDateString(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -552,6 +560,52 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     }
 }
 
+const _stripePatternByCtx = new WeakMap();
+function getLoadingStripePattern(ctx) {
+    const cached = _stripePatternByCtx.get(ctx);
+    if (cached) return cached;
+    const off = document.createElement('canvas');
+    const TILE = 12;
+    off.width = TILE;
+    off.height = TILE;
+    const octx = off.getContext('2d');
+    octx.fillStyle = 'rgba(120, 120, 120, 0.18)';
+    octx.fillRect(0, 0, TILE, TILE);
+    octx.strokeStyle = 'rgba(220, 220, 220, 0.22)';
+    octx.lineWidth = 2;
+    octx.beginPath();
+    octx.moveTo(-2, TILE + 2); octx.lineTo(TILE + 2, -2);
+    octx.moveTo(-2, TILE * 2 + 2); octx.lineTo(TILE + 2, TILE - 2);
+    octx.stroke();
+    const pattern = ctx.createPattern(off, 'repeat');
+    _stripePatternByCtx.set(ctx, pattern);
+    return pattern;
+}
+
+const loadingStripesPlugin = {
+    id: 'loadingStripesPlugin',
+    beforeDatasetsDraw(chart) {
+        if (!queuedOrLoadingDates.size) return;
+        const { ctx, chartArea: area, scales: { x } } = chart;
+        const pattern = getLoadingStripePattern(ctx);
+        if (!pattern) return;
+        const MS_PER_DAY = 86400000;
+        ctx.save();
+        ctx.fillStyle = pattern;
+        for (const dateStr of queuedOrLoadingDates) {
+            const dayStart = new Date(`${dateStr}T00:00:00`);
+            const dayEnd = new Date(dayStart.getTime() + MS_PER_DAY);
+            const xStart = x.getPixelForValue(dayStart);
+            const xEnd = x.getPixelForValue(dayEnd);
+            if (xEnd < area.left || xStart > area.right) continue;
+            const left = Math.max(area.left, xStart);
+            const right = Math.min(area.right, xEnd);
+            ctx.fillRect(left, area.top, right - left, area.bottom - area.top);
+        }
+        ctx.restore();
+    }
+};
+
 const workoutOverlayPlugin = {
     id: 'workoutOverlayPlugin',
     beforeDatasetsDraw(chart) {
@@ -742,6 +796,7 @@ function displayHeartRateChart(labels, data) {
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
     Chart.register(
+        loadingStripesPlugin,
         workoutOverlayPlugin,
         sleepOverlayPlugin,
         restingHrPlugin,
@@ -750,7 +805,7 @@ function displayHeartRateChart(labels, data) {
         workoutEmojiPlugin
     );
 
-    new Chart(ctx, {
+    _heartRateChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: fullDateLabels,
@@ -823,6 +878,7 @@ function displayHeartRateChart(labels, data) {
                             enabled: true,
                         },
                         mode: 'x',
+                        onZoom: onZoom,
                     },
                 },
                 legend: {
@@ -879,28 +935,83 @@ function displayHeartRateChart(labels, data) {
 
 
 
-// Handle panning: fetch previous day's data if necessary and force an update
-let isFetchingPanData = false;
-async function onPan({ chart }) {
-    const xScale = chart.scales.x;
-    const minDate = new Date(xScale.min);  // Visible minimum date
+// Add a date to the load queue if it hasn't been fetched or queued yet.
+// `loadedDates` is set inside fetchHeartRateDataForDate the moment a fetch
+// starts (and only cleared on error), so it doubles as a "fetch already
+// initiated" guard here.
+function enqueueDate(dateStr) {
+    if (loadedDates.has(dateStr)) return false;
+    if (queuedOrLoadingDates.has(dateStr)) return false;
+    queuedOrLoadingDates.add(dateStr);
+    loadQueue.push(dateStr);
+    return true;
+}
 
-    if (minDate < currentStartDate && !isFetchingPanData) {
-        isFetchingPanData = true;
-
-        // Fetch data for the previous day
-        const newDate = new Date(currentStartDate);
-        newDate.setDate(newDate.getDate() - 1);  // Go one day back
-
-        const newData = await fetchHeartRateDataForDate(newDate);
-        await fetchOverlayDataForDate(newDate);
-        if (newData.length > 0) {
-            addDataToChart(chart, newData, newDate);
-            currentStartDate = newDate;  // Update start date to include the new data
+async function processLoadQueue(chart) {
+    if (isProcessingLoadQueue) return;
+    isProcessingLoadQueue = true;
+    try {
+        while (loadQueue.length) {
+            const dateStr = loadQueue.shift();
+            const date = new Date(`${dateStr}T00:00:00`);
+            try {
+                const data = await fetchHeartRateDataForDate(date);
+                await fetchOverlayDataForDate(date);
+                if (data.length > 0) {
+                    addDataToChart(chart, data, date);
+                    if (date < currentStartDate) currentStartDate = date;
+                }
+            } catch (e) {
+                console.warn('queued load failed', dateStr, e);
+            } finally {
+                queuedOrLoadingDates.delete(dateStr);
+                chart.update('none');
+            }
         }
-
-        isFetchingPanData = false;
+    } finally {
+        isProcessingLoadQueue = false;
     }
+}
+
+// Enqueue every visible day (most-recent-first so the chart fills inward
+// toward already-loaded data). Pass includePrior to also queue the day just
+// before the leftmost visible date — used by the "Fetch visible" button so
+// the user always has at least one day of headroom past the viewport.
+function queueVisibleDates(chart, { includePrior = false } = {}) {
+    if (!chart) return;
+    const xScale = chart.scales.x;
+    const xMin = xScale.min;
+    const xMax = xScale.max;
+    if (xMin == null || xMax == null) return;
+    const startDay = new Date(xMin);
+    startDay.setHours(0, 0, 0, 0);
+    const MS_PER_DAY = 86400000;
+    const days = [];
+    for (let t = startDay.getTime(); t <= xMax; t += MS_PER_DAY) {
+        days.push(getLocalDateString(new Date(t)));
+    }
+    if (includePrior && days.length) {
+        const first = new Date(`${days[0]}T00:00:00`);
+        first.setDate(first.getDate() - 1);
+        days.unshift(getLocalDateString(first));
+    }
+    days.reverse();
+    let queued = false;
+    for (const d of days) {
+        if (enqueueDate(d)) queued = true;
+    }
+    if (queued) {
+        chart.update('none');
+        processLoadQueue(chart);
+    }
+}
+
+function onPan({ chart }) {
+    queueVisibleDates(chart);
+}
+
+function onZoom({ chart }) {
+    queueVisibleDates(chart);
 }
 
 // Main function to fetch today's data and render the chart
@@ -1025,4 +1136,8 @@ document.getElementById('reauthBtn').addEventListener('click', () => {
     localStorage.removeItem('fitbit_access_token');
     localStorage.removeItem('auth_in_progress');
     safeRedirectToAuth();
+});
+
+document.getElementById('fetchVisibleBtn').addEventListener('click', () => {
+    queueVisibleDates(_heartRateChart, { includePrior: true });
 });

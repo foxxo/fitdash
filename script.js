@@ -193,6 +193,38 @@ function getCachedRestingHR(timestampMs) {
     return rhr;
 }
 
+// Sleep-phase lookup index. Tooltip fires on every mousemove and previously
+// scanned the full phase list; with 5+ days loaded that's hundreds of entries
+// per pointer event. Phases are bucketed by local day (under both their start
+// and end day so phases that span midnight are findable from either side) and
+// pre-decorated with numeric timestamps so the tooltip avoids Date coercion.
+const _sleepPhasesByDay = new Map();
+function indexSleepPhase(phase) {
+    if (phase._indexed) return;
+    phase.startMs = phase.start.getTime();
+    phase.endMs = phase.end.getTime();
+    phase._indexed = true;
+    const startKey = getLocalDateString(phase.start);
+    let bucket = _sleepPhasesByDay.get(startKey);
+    if (!bucket) { bucket = []; _sleepPhasesByDay.set(startKey, bucket); }
+    bucket.push(phase);
+    const endKey = getLocalDateString(phase.end);
+    if (endKey !== startKey) {
+        let endBucket = _sleepPhasesByDay.get(endKey);
+        if (!endBucket) { endBucket = []; _sleepPhasesByDay.set(endKey, endBucket); }
+        endBucket.push(phase);
+    }
+}
+function findSleepPhaseAt(timestampMs) {
+    const key = getLocalDateString(new Date(timestampMs));
+    const bucket = _sleepPhasesByDay.get(key);
+    if (!bucket) return null;
+    for (const phase of bucket) {
+        if (timestampMs >= phase.startMs && timestampMs <= phase.endMs) return phase;
+    }
+    return null;
+}
+
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
@@ -384,6 +416,7 @@ async function fetchOverlayDataForDate(date) {
 
     window.fitdashOverlayData.workouts = [...(window.fitdashOverlayData.workouts || []), ...workouts];
     window.fitdashOverlayData.sleepPhases = [...(window.fitdashOverlayData.sleepPhases || []), ...sleepPhases];
+    for (const phase of sleepPhases) indexSleepPhase(phase);
     if (sleepSummary) {
         window.fitdashOverlayData.sleepStatsByDate = {
             ...(window.fitdashOverlayData.sleepStatsByDate || {}),
@@ -405,7 +438,8 @@ async function fetchOverlayDataForDate(date) {
     };
 }
 
-// Function to add new data to the chart
+// Append new data to the chart. Caller is responsible for triggering a redraw
+// (processLoadQueue does this in its per-date finally block).
 function addDataToChart(chart, newData, date) {
     const formattedDate = getLocalDateString(date);
     const newPoints = newData.map(entry => ({
@@ -413,7 +447,6 @@ function addDataToChart(chart, newData, date) {
         y: entry.value,
     }));
     chart.data.datasets[0].data = [...newPoints, ...chart.data.datasets[0].data];
-    chart.update('none');
 }
 
 const summaryBubblePlugin = {
@@ -867,7 +900,7 @@ function displayHeartRateChart(points) {
                 pointRadius: 0,
                 pointRadiusOnHover: 0,
                 fill: false,
-                tension: 0.1,
+                tension: 0,
 
                 segment: {
                     borderColor: ctx => {
@@ -895,13 +928,7 @@ function displayHeartRateChart(points) {
                     callbacks: {
                         label: function (context) {
                             const hr = context.parsed.y;
-                            const time = new Date(context.parsed.x);
-
-                            // Sleep phase at this time
-                            const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
-                            const sleep = sleepPhases.find(phase =>
-                                time >= phase.start && time <= phase.end
-                            );
+                            const sleep = findSleepPhaseAt(context.parsed.x);
 
                             const lines = [`❤️ ${hr} BPM`];
 
@@ -1056,7 +1083,9 @@ function queueVisibleDates(chart, { includePrior = false } = {}) {
         if (enqueueDate(d)) queued = true;
     }
     if (queued) {
-        chart.update('none');
+        // Chart.js's zoom plugin already redraws per pan/zoom event, so we
+        // skip an explicit update here. Callers outside that loop (e.g. the
+        // manual "Fetch visible" button) must trigger their own redraw.
         processLoadQueue(chart);
     }
 }
@@ -1103,6 +1132,7 @@ async function fetchHeartRateData() {
             [todayKey]: { restingHR, calories }
         }
     };
+    for (const phase of sleepPhases) indexSleepPhase(phase);
     window.fitdashOverlayData.hrvByDate = {
         ...(window.fitdashOverlayData.hrvByDate || {}),
         [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
@@ -1198,4 +1228,5 @@ document.getElementById('reauthBtn').addEventListener('click', () => {
 
 document.getElementById('fetchVisibleBtn').addEventListener('click', () => {
     queueVisibleDates(_heartRateChart, { includePrior: true });
+    _heartRateChart?.update('none');
 });

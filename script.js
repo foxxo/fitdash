@@ -942,6 +942,7 @@ function displayHeartRateChart(labels, data) {
 function enqueueDate(dateStr) {
     if (loadedDates.has(dateStr)) return false;
     if (queuedOrLoadingDates.has(dateStr)) return false;
+    if (dateStr > getLocalDateString(new Date())) return false;
     queuedOrLoadingDates.add(dateStr);
     loadQueue.push(dateStr);
     return true;

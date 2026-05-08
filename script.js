@@ -59,18 +59,44 @@ function emojiForDrink(label) {
     return '🥃'; // default: whisky/cognac/pickleback/etc.
 }
 
-function emojisForDrinkItem(item) {
+// Returns { emoji, count } or null. Counts may be fractional (e.g. "1.5 beers").
+function parseDrinkItem(item) {
     const s = item.trim();
-    if (!s) return '';
-    const m = s.match(/^(\d+)\s+(.+)$/);
-    const count = m ? Math.max(1, Math.min(10, parseInt(m[1], 10))) : 1;
+    if (!s) return null;
+    const m = s.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+    const rawCount = m ? parseFloat(m[1]) : 1;
+    const count = Math.max(0, Math.min(99, rawCount));
+    if (!(count > 0)) return null;
     const label = m ? m[2] : s;
-    return emojiForDrink(label).repeat(count);
+    return { emoji: emojiForDrink(label), count };
 }
 
-function emojisForDrinksList(cell) {
-    if (!cell) return '';
-    return cell.split(',').map(emojisForDrinkItem).join('');
+function parseDrinksList(cell) {
+    if (!cell) return [];
+    return cell.split(',').map(parseDrinkItem).filter(Boolean);
+}
+
+function formatDrinkCount(n) {
+    return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+// Convert parsed items to a flat list of render segments. Counts > 3 collapse
+// to "<emoji> ×N"; smaller counts render full emojis plus an optional half.
+function drinksToSegments(items) {
+    const segments = [];
+    for (const { emoji, count } of items) {
+        if (count > 3) {
+            segments.push({ type: 'emoji', text: emoji });
+            segments.push({ type: 'text', text: `×${formatDrinkCount(count)}` });
+            continue;
+        }
+        const full = Math.floor(count);
+        const frac = count - full;
+        for (let i = 0; i < full; i++) segments.push({ type: 'emoji', text: emoji });
+        if (frac >= 0.75) segments.push({ type: 'emoji', text: emoji });
+        else if (frac >= 0.25) segments.push({ type: 'half', text: emoji });
+    }
+    return segments;
 }
 
 async function fetchDrinksByDate() {
@@ -91,8 +117,8 @@ async function fetchDrinksByDate() {
     for (const row of rows) {
         const dateKey = parseSheetDate(row[0]);
         if (!dateKey) continue;
-        const emojis = emojisForDrinksList(row[1] || ''); // column B
-        if (emojis) map[dateKey] = emojis;
+        const items = parseDrinksList(row[1] || ''); // column B
+        if (items.length) map[dateKey] = items;
     }
     return map;
 }
@@ -448,16 +474,24 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
         }
     }
 
-    if (drinks) lines.push({ text: drinks, font: BODY, color: '#333' });
+    if (drinks && drinks.length) {
+        lines.push({ type: 'drinks', segments: drinksToSegments(drinks), font: BODY, color: '#333' });
+    }
 
     const padding = 6;
     const lineHeightFor = font => parseInt(font.match(/(\d+)px/)[1], 10) + 3;
+
+    const segmentWidth = (seg) => {
+        const full = ctx.measureText(seg.text).width;
+        return seg.type === 'half' ? full / 2 : full;
+    };
+    const drinksLineWidth = (line) => line.segments.reduce((sum, s) => sum + segmentWidth(s), 0);
 
     let maxWidth = 0;
     let height = padding * 2;
     for (const line of lines) {
         ctx.font = line.font;
-        const w = ctx.measureText(line.text).width;
+        const w = line.type === 'drinks' ? drinksLineWidth(line) : ctx.measureText(line.text).width;
         if (w > maxWidth) maxWidth = w;
         height += lineHeightFor(line.font);
     }
@@ -489,7 +523,31 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     for (const line of lines) {
         ctx.font = line.font;
         ctx.fillStyle = line.color;
-        ctx.fillText(line.text, x, cursorY);
+        if (line.type === 'drinks') {
+            const lineHeight = lineHeightFor(line.font);
+            const totalWidth = drinksLineWidth(line);
+            ctx.textAlign = 'left';
+            let cursorX = x - totalWidth / 2;
+            for (const seg of line.segments) {
+                const fullW = ctx.measureText(seg.text).width;
+                if (seg.type === 'half') {
+                    const halfW = fullW / 2;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(cursorX, cursorY, halfW, lineHeight);
+                    ctx.clip();
+                    ctx.fillText(seg.text, cursorX, cursorY);
+                    ctx.restore();
+                    cursorX += halfW;
+                } else {
+                    ctx.fillText(seg.text, cursorX, cursorY);
+                    cursorX += fullW;
+                }
+            }
+            ctx.textAlign = 'center';
+        } else {
+            ctx.fillText(line.text, x, cursorY);
+        }
         cursorY += lineHeightFor(line.font);
     }
 }

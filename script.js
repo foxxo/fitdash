@@ -175,6 +175,24 @@ function getLocalDateString(date) {
     return `${year}-${month}-${day}`;
 }
 
+// Hot path: line segment color callback runs per drawn segment. Cache the
+// resting-HR lookup per local day so we skip the Date->string->dict-lookup
+// chain on every call. Cleared whenever restingHRByDate gets new entries.
+const _restingHRByLocalDay = new Map();
+function invalidateRestingHRCache() {
+    _restingHRByLocalDay.clear();
+}
+function getCachedRestingHR(timestampMs) {
+    const d = new Date(timestampMs);
+    const bucket = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    const cached = _restingHRByLocalDay.get(bucket);
+    if (cached !== undefined) return cached;
+    const dateStr = getLocalDateString(d);
+    const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateStr] ?? 66;
+    _restingHRByLocalDay.set(bucket, rhr);
+    return rhr;
+}
+
 async function fetchWorkoutSessions(date) {
     const accessToken = localStorage.getItem('fitbit_access_token');
     const formattedDate = getLocalDateString(date);
@@ -239,13 +257,17 @@ const workoutEmojiPlugin = {
     afterDatasetsDraw(chart) {
         const workouts = window.fitdashOverlayData?.workouts || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
+        const xMin = x.min, xMax = x.max;
 
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
         workouts.forEach(({ start, activityName, calories, end }) => {
-            const xPos = (x.getPixelForValue(start) + x.getPixelForValue(end)) / 2;
+            const startMs = start.getTime();
+            const endMs = end.getTime();
+            if (endMs < xMin || startMs > xMax) return;
+            const xPos = (x.getPixelForValue(startMs) + x.getPixelForValue(endMs)) / 2;
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
                 const emojiY = area.bottom + 4;
@@ -372,6 +394,7 @@ async function fetchOverlayDataForDate(date) {
         ...(window.fitdashOverlayData.restingHRByDate || {}),
         [formattedDate]: restingHR
     };
+    invalidateRestingHRCache();
     window.fitdashOverlayData.dailySummaries = {
         ...(window.fitdashOverlayData.dailySummaries || {}),
         [formattedDate]: { restingHR, calories }
@@ -385,14 +408,11 @@ async function fetchOverlayDataForDate(date) {
 // Function to add new data to the chart
 function addDataToChart(chart, newData, date) {
     const formattedDate = getLocalDateString(date);
-    const timeLabels = newData.map(entry => `${formattedDate}T${entry.time}`);
-    const heartRateValues = newData.map(entry => entry.value);
-
-    // Convert times to Date objects and prepend to chart data
-    const fullDateLabels = timeLabels.map(time => new Date(time));
-    chart.data.labels = [...fullDateLabels, ...chart.data.labels];
-    chart.data.datasets[0].data = [...heartRateValues, ...chart.data.datasets[0].data];
-
+    const newPoints = newData.map(entry => ({
+        x: new Date(`${formattedDate}T${entry.time}`).getTime(),
+        y: entry.value,
+    }));
+    chart.data.datasets[0].data = [...newPoints, ...chart.data.datasets[0].data];
     chart.update('none');
 }
 
@@ -646,17 +666,18 @@ const workoutOverlayPlugin = {
     beforeDatasetsDraw(chart) {
         const workouts = window.fitdashOverlayData?.workouts || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
+        const xMin = x.min, xMax = x.max;
 
         ctx.save();
         ctx.fillStyle = 'rgba(123,253,109,0.51)'; // orange
 
         workouts.forEach(({ start, end }) => {
-            const xStart = x.getPixelForValue(start);
-            const xEnd = x.getPixelForValue(end);
-
-            if (xEnd >= area.left && xStart <= area.right) {
-                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
-            }
+            const startMs = start.getTime();
+            const endMs = end.getTime();
+            if (endMs < xMin || startMs > xMax) return;
+            const xStart = x.getPixelForValue(startMs);
+            const xEnd = x.getPixelForValue(endMs);
+            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
         });
 
         ctx.restore();
@@ -668,6 +689,7 @@ const sleepOverlayPlugin = {
     beforeDatasetsDraw(chart) {
         const sleepPhases = window.fitdashOverlayData?.sleepPhases || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
+        const xMin = x.min, xMax = x.max;
 
         const stageColors = {
             light:  'rgba(70,130,200,0.35)', // steel blue
@@ -680,13 +702,13 @@ const sleepOverlayPlugin = {
         ctx.save();
 
         sleepPhases.forEach(({ start, end, stage }) => {
-            const xStart = x.getPixelForValue(start);
-            const xEnd = x.getPixelForValue(end);
-
-            if (xEnd >= area.left && xStart <= area.right) {
-                ctx.fillStyle = stageColors[stage] || 'rgba(0,0,0,0.05)';
-                ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
-            }
+            const startMs = start.getTime();
+            const endMs = end.getTime();
+            if (endMs < xMin || startMs > xMax) return;
+            const xStart = x.getPixelForValue(startMs);
+            const xEnd = x.getPixelForValue(endMs);
+            ctx.fillStyle = stageColors[stage] || 'rgba(0,0,0,0.05)';
+            ctx.fillRect(xStart, area.top, xEnd - xStart, area.bottom - area.top);
         });
 
         ctx.restore();
@@ -820,14 +842,7 @@ function getHRGradientColor(hr, restingHR = 60) {
 
 
 
-function displayHeartRateChart(labels, data) {
-    const fullDateLabels = labels.map(time => {
-        const [hours, minutes] = time.split(':').map(Number);
-        const today = new Date();
-        today.setHours(hours, minutes, 0, 0);  // Set the time (hours and minutes)
-        return today;  // Return a Date object
-    });
-
+function displayHeartRateChart(points) {
     const ctx = document.getElementById('heartrateChart').getContext('2d');
 
     Chart.register(
@@ -843,10 +858,11 @@ function displayHeartRateChart(labels, data) {
     _heartRateChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: fullDateLabels,
             datasets: [{
                 label: 'Heart Rate (BPM)',
-                data: data,
+                data: points,
+                parsing: false,    // points are already {x, y} — skip Chart.js parsing
+                normalized: true,  // tell Chart.js the data is sorted by x
                 borderColor: 'rgba(99, 160, 255, 1)',  // fallback
                 pointRadius: 0,
                 pointRadiusOnHover: 0,
@@ -856,10 +872,7 @@ function displayHeartRateChart(labels, data) {
                 segment: {
                     borderColor: ctx => {
                         const hr = ctx.p1.parsed.y;
-                        const point = ctx.p1;
-                        const time = new Date(point.parsed.x);
-                        const dateStr = getLocalDateString(time);
-                        const restingHR = window.fitdashOverlayData?.restingHRByDate?.[dateStr] || 66;
+                        const restingHR = getCachedRestingHR(ctx.p1.parsed.x);
                         return getHRGradientColor(hr, restingHR);
                     }
                 }
@@ -867,11 +880,17 @@ function displayHeartRateChart(labels, data) {
         },
         options: {
             responsive: true,
+            animation: false,  // skip the initial-render animation
             interaction: {
                 mode: 'nearest',
                 intersect: false,
             },
             plugins: {
+                decimation: {
+                    enabled: true,
+                    algorithm: 'lttb',
+                    samples: 1500,
+                },
                 tooltip: {
                     callbacks: {
                         label: function (context) {
@@ -1068,10 +1087,12 @@ async function fetchHeartRateData() {
         return;
     }
 
-    const timeLabels = heartRateData.map(entry => entry.time);
-    const heartRateValues = heartRateData.map(entry => entry.value);
     const { restingHR, calories } = dailySummary;
     const todayKey = getLocalDateString(today);
+    const points = heartRateData.map(entry => ({
+        x: new Date(`${todayKey}T${entry.time}`).getTime(),
+        y: entry.value,
+    }));
 
     window.fitdashOverlayData = {
         workouts,
@@ -1087,8 +1108,9 @@ async function fetchHeartRateData() {
         [getLocalDateString(today)]: hrv // { dailyRmssd, deepRmssd } or null
     };
     window.fitdashOverlayData.drinksByDate = drinksByDate || {};
+    invalidateRestingHRCache();
 
-    displayHeartRateChart(timeLabels, heartRateValues);  // Render the chart
+    displayHeartRateChart(points);
 }
 
 

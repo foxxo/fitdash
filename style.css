@@ -6,6 +6,7 @@ html, body {
     background-color: #121212;
     color: #eee;
     font-family: sans-serif;
+    overflow: hidden;
 }
 
 .container {
@@ -23,20 +24,30 @@ h1 {
     color: #fff;
 }
 
-button {
-    display: block;
-    margin: 20px auto;
-    padding: 10px 20px;
-    font-size: 18px;
-    background-color: #333;
+#dev-tools {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    display: flex;
+    gap: 6px;
+}
+
+#dev-tools button {
+    display: inline-block;
+    margin: 0;
+    padding: 6px 10px;
+    font-size: 13px;
+    background-color: rgba(51, 51, 51, 0.85);
     color: #fff;
     border: 1px solid #444;
     border-radius: 6px;
     cursor: pointer;
+    backdrop-filter: blur(4px);
 }
 
-button:hover {
-    background-color: #444;
+#dev-tools button:hover {
+    background-color: rgba(68, 68, 68, 0.95);
 }
 
 #dataDisplay {
@@ -46,18 +57,30 @@ button:hover {
 }
 
 #chart-container {
-    width: 80vw;
-    height: 80vh;
-    margin: 2vh auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: absolute;
+    inset: 8px;
     background-color: #1e1e1e;
     border-radius: 12px;
+    padding: 8px;
+    box-sizing: border-box;
 }
 
 canvas {
     width: 100% !important;
     height: 100% !important;
     background-color: #1e1e1e;
+    display: block;
+}
+
+@media (max-width: 600px) {
+    #chart-container {
+        inset: 4px;
+        padding: 4px;
+        border-radius: 8px;
+    }
+
+    #dev-tools button {
+        font-size: 12px;
+        padding: 5px 8px;
+    }
 }

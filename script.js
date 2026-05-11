@@ -275,6 +275,18 @@ async function fetchHRVSummary(date) {
 }
 
 
+// Plugin text uses fixed pixel sizes; on narrow viewports those become huge
+// relative to the chart. Scale by chart width against a 1200px design width,
+// clamped so labels stay legible but don't dominate.
+function getChartFontScale(chart) {
+    const w = chart?.width || chart?.chartArea?.width || 1200;
+    return Math.max(0.55, Math.min(1, w / 1200));
+}
+
+function scaledFont(spec, scale) {
+    return spec.replace(/(\d+)px/, (_, n) => `${Math.max(8, Math.round(parseInt(n, 10) * scale))}px`);
+}
+
 function getWorkoutEmoji(activityName) {
     const name = activityName.toLowerCase();
     if (name.includes("walk")) return "👟";
@@ -290,6 +302,9 @@ const workoutEmojiPlugin = {
         const workouts = window.fitdashOverlayData?.workouts || [];
         const { ctx, chartArea: area, scales: { x } } = chart;
         const xMin = x.min, xMax = x.max;
+        const scale = getChartFontScale(chart);
+        const emojiPx = Math.max(14, Math.round(32 * scale));
+        const labelPx = Math.max(9, Math.round(12 * scale));
 
         ctx.save();
         ctx.textAlign = 'center';
@@ -303,12 +318,12 @@ const workoutEmojiPlugin = {
             if (xPos >= area.left && xPos <= area.right) {
                 const emoji = getWorkoutEmoji(activityName);
                 const emojiY = area.bottom + 4;
-                const textY = emojiY + 32; // Push second line down
+                const textY = emojiY + emojiPx;
 
-                ctx.fillStyle = 'rgb(255,255,255)'; // Ensure full opacity
-                ctx.font = '32px sans-serif';
+                ctx.fillStyle = 'rgb(255,255,255)';
+                ctx.font = `${emojiPx}px sans-serif`;
                 ctx.fillText(emoji, xPos, emojiY);
-                ctx.font = '12px sans-serif'; // Smaller for text
+                ctx.font = `${labelPx}px sans-serif`;
                 ctx.fillText(`${Math.round(calories)} cal`, xPos, textY);
             }
         });
@@ -454,12 +469,14 @@ const summaryBubblePlugin = {
     beforeDatasetsDraw(chart) {
         const { ctx, chartArea: area, scales: { x } } = chart;
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
+        const scale = getChartFontScale(chart);
+        const bubbleTopOffset = Math.round(22 * scale);
 
         const summaryDates = Object.keys(summaries).sort(); // Ensure date order
 
         ctx.save();
         ctx.textAlign = 'center';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = scaledFont('bold 12px sans-serif', scale);
         ctx.textBaseline = 'bottom';
 
         for (let i = 0; i < summaryDates.length - 1; i++) {
@@ -473,7 +490,7 @@ const summaryBubblePlugin = {
 
             if (xPos >= area.left && xPos <= area.right && summary?.calories != null) {
                 const labelDate = new Date(`${dateStr}T00:00:00`);
-                drawBubble(ctx, xPos, area.top + 22, labelDate, summary.calories);
+                drawBubble(ctx, xPos, area.top + bubbleTopOffset, labelDate, summary.calories, false, scale);
             }
         }
 
@@ -485,7 +502,7 @@ const summaryBubblePlugin = {
 
         if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
             const labelDate = new Date(`${todayStr}T00:00:00`);
-            drawBubble(ctx, latestX, area.top + 22, labelDate, todaySummary.calories, true);
+            drawBubble(ctx, latestX, area.top + bubbleTopOffset, labelDate, todaySummary.calories, true, scale);
         }
 
         ctx.restore();
@@ -498,7 +515,7 @@ function formatDuration(minutes) {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
+function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1) {
     const date = new Date(dateStr);
     const label = date.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -512,9 +529,9 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false) {
     const sleep = window.fitdashOverlayData?.sleepStatsByDate?.[dateKey];
     const drinks = window.fitdashOverlayData?.drinksByDate?.[dateKey];
 
-    const HEADER = 'bold 13px sans-serif';
-    const BODY = '12px sans-serif';
-    const DIM = '10px sans-serif';
+    const HEADER = scaledFont('bold 13px sans-serif', scale);
+    const BODY = scaledFont('12px sans-serif', scale);
+    const DIM = scaledFont('10px sans-serif', scale);
 
     const lines = [
         { text: `${label} · ${calories.toLocaleString()} cal`, font: HEADER, color: '#222' }
@@ -809,7 +826,7 @@ const midnightMarkerPlugin = {
         ctx.setLineDash([3, 4]);
         ctx.strokeStyle = 'rgba(146,146,255,0.78)';
         ctx.fillStyle = 'rgba(103,220,255,0.9)';
-        ctx.font = '12px sans-serif';
+        ctx.font = scaledFont('12px sans-serif', getChartFontScale(chart));
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
 
@@ -913,6 +930,7 @@ function displayHeartRateChart(points) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,  // let CSS-sized container govern dimensions
             animation: false,  // skip the initial-render animation
             interaction: {
                 mode: 'nearest',

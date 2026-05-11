@@ -283,6 +283,12 @@ function getChartFontScale(chart) {
     return Math.max(0.55, Math.min(1, w / 1200));
 }
 
+// Interactive bubble state. The summary plugin populates _bubbleHitRegions
+// each redraw; the chart's onClick handler hit-tests against them and toggles
+// _expandedBubbleDate. An expanded bubble draws full-content + enlarged on top.
+let _expandedBubbleDate = null;
+const _bubbleHitRegions = [];
+
 function scaledFont(spec, scale) {
     return spec.replace(/(\d+)px/, (_, n) => `${Math.max(8, Math.round(parseInt(n, 10) * scale))}px`);
 }
@@ -474,41 +480,79 @@ const summaryBubblePlugin = {
         const bubbleTopOffset = Math.round(22 * scale);
         const BUBBLE_GAP = 6;
 
-        const summaryDates = Object.keys(summaries).sort(); // Ensure date order
+        _bubbleHitRegions.length = 0;
+
+        // Build the draw queue: one entry per visible per-day bubble (anchored
+        // at the next day's midnight) plus the "Now" bubble at the live cursor.
+        const queue = [];
+        const summaryDates = Object.keys(summaries).sort();
+        for (let i = 0; i < summaryDates.length - 1; i++) {
+            const dateStr = summaryDates[i];
+            const summary = summaries[dateStr];
+            if (summary?.calories == null) continue;
+            const xPos = x.getPixelForValue(new Date(`${summaryDates[i + 1]}T00:00:00`));
+            if (xPos < area.left || xPos > area.right) continue;
+            queue.push({
+                x: xPos,
+                labelDate: new Date(`${dateStr}T00:00:00`),
+                calories: summary.calories,
+                highlight: false,
+                dateKey: dateStr,
+                respectOverlap: true,
+            });
+        }
+        const now = new Date();
+        const todayStr = getLocalDateString(now);
+        const todaySummary = summaries[todayStr];
+        const latestX = x.getPixelForValue(now);
+        if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
+            queue.push({
+                x: latestX,
+                labelDate: new Date(`${todayStr}T00:00:00`),
+                calories: todaySummary.calories,
+                highlight: true,
+                dateKey: todayStr,
+                respectOverlap: false,
+            });
+        }
 
         ctx.save();
         ctx.textAlign = 'center';
         ctx.font = scaledFont('bold 12px sans-serif', scale);
         ctx.textBaseline = 'bottom';
 
-        // Left-to-right with overlap suppression: each bubble must clear the
-        // previous one's right edge by BUBBLE_GAP, otherwise we skip it.
+        // Pass 1: draw every non-expanded bubble. Per-day bubbles respect the
+        // overlap chain; the "Now" bubble ignores it so the live readout
+        // always wins. The expanded bubble (if any) is deferred to pass 2.
         let minLeft = -Infinity;
-        for (let i = 0; i < summaryDates.length - 1; i++) {
-            const dateStr = summaryDates[i]; // previous day
-            const nextDateStr = summaryDates[i + 1]; // midnight of the next day
-
-            const nextMidnight = new Date(`${nextDateStr}T00:00:00`);
-            const xPos = x.getPixelForValue(nextMidnight);
-
-            const summary = summaries[dateStr];
-
-            if (xPos >= area.left && xPos <= area.right && summary?.calories != null) {
-                const labelDate = new Date(`${dateStr}T00:00:00`);
-                const drawn = drawBubble(ctx, xPos, area.top + bubbleTopOffset, labelDate, summary.calories, false, scale, compact, minLeft);
-                if (drawn) minLeft = drawn.right + BUBBLE_GAP;
+        let expandedSpec = null;
+        for (const spec of queue) {
+            if (spec.dateKey === _expandedBubbleDate) {
+                expandedSpec = spec;
+                continue;
+            }
+            const limit = spec.respectOverlap ? minLeft : -Infinity;
+            const drawn = drawBubble(
+                ctx, spec.x, area.top + bubbleTopOffset,
+                spec.labelDate, spec.calories,
+                spec.highlight, scale, compact, limit
+            );
+            if (drawn) {
+                _bubbleHitRegions.push({ dateKey: spec.dateKey, ...drawn });
+                if (spec.respectOverlap) minLeft = drawn.right + BUBBLE_GAP;
             }
         }
 
-        // "Now" bubble — always drawn, ignores overlap so the latest stays visible.
-        const now = new Date();
-        const todayStr = getLocalDateString(now);
-        const todaySummary = summaries[todayStr];
-        const latestX = x.getPixelForValue(now);
-
-        if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
-            const labelDate = new Date(`${todayStr}T00:00:00`);
-            drawBubble(ctx, latestX, area.top + bubbleTopOffset, labelDate, todaySummary.calories, true, scale, compact);
+        // Pass 2: the expanded bubble draws last so it sits on top, ignores
+        // overlap, clamps to the chart area, and runs in full (non-compact) mode.
+        if (expandedSpec) {
+            const clampX = { min: area.left + 4, max: area.right - 4 };
+            const drawn = drawBubble(
+                ctx, expandedSpec.x, area.top + bubbleTopOffset,
+                expandedSpec.labelDate, expandedSpec.calories,
+                expandedSpec.highlight, scale, false, -Infinity, true, clampX
+            );
+            if (drawn) _bubbleHitRegions.push({ dateKey: expandedSpec.dateKey, ...drawn });
         }
 
         ctx.restore();
@@ -521,9 +565,10 @@ function formatDuration(minutes) {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, compact = false, minLeft = -Infinity) {
+function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, compact = false, minLeft = -Infinity, expanded = false, clampX = null) {
     const date = new Date(dateStr);
-    const label = compact
+    // Expanded always uses the long date; compact short-form only when not expanded.
+    const label = (compact && !expanded)
         ? date.toLocaleDateString('en-US', { weekday: 'short' })
         : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
@@ -535,9 +580,12 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, 
 
     // Per-line font floors keep bubble text readable when the global scale
     // would otherwise crush it below ~8px on phone-sized chart widths.
-    const HEADER = scaledFont('bold 13px sans-serif', Math.max(scale, 11 / 13));
-    const BODY = scaledFont('12px sans-serif', Math.max(scale, 10 / 12));
-    const DIM = scaledFont('10px sans-serif', Math.max(scale, 9 / 10));
+    // Expanded mode bumps everything to at least 1.1× so the "popped" bubble
+    // is visibly bigger than its neighbors even on a desktop where scale=1.
+    const effectiveScale = expanded ? Math.max(1.1, scale) : scale;
+    const HEADER = scaledFont('bold 13px sans-serif', Math.max(effectiveScale, 11 / 13));
+    const BODY = scaledFont('12px sans-serif', Math.max(effectiveScale, 10 / 12));
+    const DIM = scaledFont('10px sans-serif', Math.max(effectiveScale, 9 / 10));
 
     const lines = [
         { text: `${label} · ${calories.toLocaleString()} cal`, font: HEADER, color: '#222' }
@@ -601,8 +649,15 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, 
     const width = maxWidth + padding * 2;
 
     const radius = 6;
-    const left = x - width / 2;
+    let left = x - width / 2;
     const top = y;
+
+    // Expanded bubble may overflow the chart area near edges; clamp inward so
+    // the full content stays visible. Non-expanded bubbles ignore this.
+    if (clampX) {
+        if (left < clampX.min) left = clampX.min;
+        else if (left + width > clampX.max) left = clampX.max - width;
+    }
 
     // Caller passes minLeft (previous bubble's right edge + gap) to suppress
     // overlap; if we'd collide, skip drawing entirely and signal that.
@@ -683,7 +738,7 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, 
         cursorY += lineHeightFor(line.font) + lineExtraHeight(line);
     }
 
-    return { left, right: left + width };
+    return { left, right: left + width, top, bottom: top + height };
 }
 
 const _stripePatternByCtx = new WeakMap();
@@ -953,6 +1008,27 @@ function displayHeartRateChart(points) {
             responsive: true,
             maintainAspectRatio: false,  // let CSS-sized container govern dimensions
             animation: false,  // skip the initial-render animation
+            // Tap/click toggles the daily-summary bubble between compact and
+            // expanded (full info, enlarged, on top). Hit-tests against the
+            // bounds collected by summaryBubblePlugin on its last draw.
+            // Iterates back-to-front so the expanded bubble (pushed last)
+            // wins ties with whatever it overlaps.
+            onClick: (event, _elements, chart) => {
+                const px = event.x, py = event.y;
+                if (px == null || py == null) return;
+                for (let i = _bubbleHitRegions.length - 1; i >= 0; i--) {
+                    const r = _bubbleHitRegions[i];
+                    if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+                        _expandedBubbleDate = _expandedBubbleDate === r.dateKey ? null : r.dateKey;
+                        chart.update('none');
+                        return;
+                    }
+                }
+                if (_expandedBubbleDate != null) {
+                    _expandedBubbleDate = null;
+                    chart.update('none');
+                }
+            },
             interaction: {
                 mode: 'nearest',
                 intersect: false,

@@ -470,7 +470,9 @@ const summaryBubblePlugin = {
         const { ctx, chartArea: area, scales: { x } } = chart;
         const summaries = window.fitdashOverlayData?.dailySummaries || {};
         const scale = getChartFontScale(chart);
+        const compact = chart.width < 560;
         const bubbleTopOffset = Math.round(22 * scale);
+        const BUBBLE_GAP = 6;
 
         const summaryDates = Object.keys(summaries).sort(); // Ensure date order
 
@@ -479,6 +481,9 @@ const summaryBubblePlugin = {
         ctx.font = scaledFont('bold 12px sans-serif', scale);
         ctx.textBaseline = 'bottom';
 
+        // Left-to-right with overlap suppression: each bubble must clear the
+        // previous one's right edge by BUBBLE_GAP, otherwise we skip it.
+        let minLeft = -Infinity;
         for (let i = 0; i < summaryDates.length - 1; i++) {
             const dateStr = summaryDates[i]; // previous day
             const nextDateStr = summaryDates[i + 1]; // midnight of the next day
@@ -490,11 +495,12 @@ const summaryBubblePlugin = {
 
             if (xPos >= area.left && xPos <= area.right && summary?.calories != null) {
                 const labelDate = new Date(`${dateStr}T00:00:00`);
-                drawBubble(ctx, xPos, area.top + bubbleTopOffset, labelDate, summary.calories, false, scale);
+                const drawn = drawBubble(ctx, xPos, area.top + bubbleTopOffset, labelDate, summary.calories, false, scale, compact, minLeft);
+                if (drawn) minLeft = drawn.right + BUBBLE_GAP;
             }
         }
 
-        // "Now" bubble
+        // "Now" bubble — always drawn, ignores overlap so the latest stays visible.
         const now = new Date();
         const todayStr = getLocalDateString(now);
         const todaySummary = summaries[todayStr];
@@ -502,7 +508,7 @@ const summaryBubblePlugin = {
 
         if (latestX >= area.left && latestX <= area.right && todaySummary?.calories != null) {
             const labelDate = new Date(`${todayStr}T00:00:00`);
-            drawBubble(ctx, latestX, area.top + bubbleTopOffset, labelDate, todaySummary.calories, true, scale);
+            drawBubble(ctx, latestX, area.top + bubbleTopOffset, labelDate, todaySummary.calories, true, scale, compact);
         }
 
         ctx.restore();
@@ -515,13 +521,11 @@ function formatDuration(minutes) {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1) {
+function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1, compact = false, minLeft = -Infinity) {
     const date = new Date(dateStr);
-    const label = date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-    });
+    const label = compact
+        ? date.toLocaleDateString('en-US', { weekday: 'short' })
+        : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
     const dateKey = getLocalDateString(new Date(dateStr));
     const rhr = window.fitdashOverlayData?.restingHRByDate?.[dateKey];
@@ -529,26 +533,37 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1) 
     const sleep = window.fitdashOverlayData?.sleepStatsByDate?.[dateKey];
     const drinks = window.fitdashOverlayData?.drinksByDate?.[dateKey];
 
-    const HEADER = scaledFont('bold 13px sans-serif', scale);
-    const BODY = scaledFont('12px sans-serif', scale);
-    const DIM = scaledFont('10px sans-serif', scale);
+    // Per-line font floors keep bubble text readable when the global scale
+    // would otherwise crush it below ~8px on phone-sized chart widths.
+    const HEADER = scaledFont('bold 13px sans-serif', Math.max(scale, 11 / 13));
+    const BODY = scaledFont('12px sans-serif', Math.max(scale, 10 / 12));
+    const DIM = scaledFont('10px sans-serif', Math.max(scale, 9 / 10));
 
     const lines = [
         { text: `${label} · ${calories.toLocaleString()} cal`, font: HEADER, color: '#222' }
     ];
 
-    const hrParts = [];
-    if (rhr) hrParts.push(`❤ ${rhr}`);
-    if (hrv?.dailyRmssd != null) hrParts.push(`💓 ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`);
-    if (hrParts.length) lines.push({ text: hrParts.join('   '), font: BODY, color: '#333' });
+    if (compact) {
+        // Tight viewport: one combined stat line (HR + sleep total), no HRV,
+        // no per-stage breakdown. Keep drinks since they're a single short row.
+        const parts = [];
+        if (rhr) parts.push(`❤ ${rhr}`);
+        if (sleep?.total > 0) parts.push(`💤 ${formatDuration(sleep.total)}`);
+        if (parts.length) lines.push({ text: parts.join('  '), font: BODY, color: '#333' });
+    } else {
+        const hrParts = [];
+        if (rhr) hrParts.push(`❤ ${rhr}`);
+        if (hrv?.dailyRmssd != null) hrParts.push(`💓 ${Math.round(hrv.dailyRmssd)} / ${Math.round(hrv.deepRmssd)}`);
+        if (hrParts.length) lines.push({ text: hrParts.join('   '), font: BODY, color: '#333' });
 
-    if (sleep?.total > 0) {
-        lines.push({ text: `💤 ${formatDuration(sleep.total)}`, font: BODY, color: '#333' });
-        const hasStages = (sleep.light + sleep.deep + sleep.rem) > 0;
-        if (hasStages) {
-            let stages = `L ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
-            if (sleep.asleep > 0) stages += `  A ${formatDuration(sleep.asleep)}`;
-            lines.push({ text: stages, font: DIM, color: '#666' });
+        if (sleep?.total > 0) {
+            lines.push({ text: `💤 ${formatDuration(sleep.total)}`, font: BODY, color: '#333' });
+            const hasStages = (sleep.light + sleep.deep + sleep.rem) > 0;
+            if (hasStages) {
+                let stages = `L ${formatDuration(sleep.light)}  D ${formatDuration(sleep.deep)}  R ${formatDuration(sleep.rem)}`;
+                if (sleep.asleep > 0) stages += `  A ${formatDuration(sleep.asleep)}`;
+                lines.push({ text: stages, font: DIM, color: '#666' });
+            }
         }
     }
 
@@ -588,6 +603,10 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1) 
     const radius = 6;
     const left = x - width / 2;
     const top = y;
+
+    // Caller passes minLeft (previous bubble's right edge + gap) to suppress
+    // overlap; if we'd collide, skip drawing entirely and signal that.
+    if (left < minLeft) return null;
 
     // Bubble background
     ctx.fillStyle = highlight ? 'rgba(255, 255, 200, 0.9)' : 'rgba(230, 240, 255, 0.85)';
@@ -663,6 +682,8 @@ function drawBubble(ctx, x, y, dateStr, calories, highlight = false, scale = 1) 
         }
         cursorY += lineHeightFor(line.font) + lineExtraHeight(line);
     }
+
+    return { left, right: left + width };
 }
 
 const _stripePatternByCtx = new WeakMap();

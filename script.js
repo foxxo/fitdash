@@ -293,12 +293,69 @@ function scaledFont(spec, scale) {
     return spec.replace(/(\d+)px/, (_, n) => `${Math.max(8, Math.round(parseInt(n, 10) * scale))}px`);
 }
 
+const WORKOUT_EMOJI = new Map([
+    ["treadmill", "🏃"],
+    ["run", "🏃"],
+    ["jog", "🏃"],
+    ["walk", "👟"],
+    ["hike", "🥾"],
+    ["stairs", "🪜"],
+    ["elliptical", "⚙️"],
+    ["spinning", "🚴"],
+    ["mountain bike", "🚵"],
+    ["bike", "🚴"],
+    ["cycl", "🚴"],
+    ["swim", "🏊"],
+    ["row", "🚣"],
+    ["kayak", "🛶"],
+    ["paddle", "🛶"],
+    ["surf", "🏄"],
+    ["ski", "⛷️"],
+    ["snowboard", "🏂"],
+    ["skate", "⛸️"],
+    ["climb", "🧗"],
+    ["yoga", "🧘"],
+    ["pilates", "🧘"],
+    ["stretch", "🤸"],
+    ["weight", "🏋️"],
+    ["strength", "🏋️"],
+    ["crossfit", "🏋️"],
+    ["hiit", "🔥"],
+    ["circuit", "🔥"],
+    ["bootcamp", "🪖"],
+    ["box", "🥊"],
+    ["kickbox", "🥊"],
+    ["martial", "🥋"],
+    ["karate", "🥋"],
+    ["judo", "🥋"],
+    ["tennis", "🎾"],
+    ["pickleball", "🥒"],
+    ["badminton", "🏸"],
+    ["golf", "⛳"],
+    ["basketball", "🏀"],
+    ["soccer", "⚽"],
+    ["football", "🏈"],
+    ["baseball", "⚾"],
+    ["volleyball", "🏐"],
+    ["hockey", "🏒"],
+    ["rugby", "🏉"],
+    ["cricket", "🏏"],
+    ["bowling", "🎳"],
+    ["dance", "💃"],
+    ["zumba", "💃"],
+    ["aerobic", "🕺"],
+    ["sport", "🤺"],
+    ["fenc", "🤺"],
+    ["archery", "🏹"],
+    ["horse", "🏇"],
+    ["frisb", "🥏"],
+]);
+
 function getWorkoutEmoji(activityName) {
     const name = activityName.toLowerCase();
-    if (name.includes("walk")) return "👟";
-    if (name.includes("sport")) return "🤺";
-    if (name.includes("aerobic")) return "🕺";
-
+    for (const [keyword, emoji] of WORKOUT_EMOJI) {
+        if (name.includes(keyword)) return emoji;
+    }
     return "💪";
 }
 
